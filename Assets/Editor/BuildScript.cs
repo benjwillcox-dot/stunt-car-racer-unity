@@ -83,18 +83,17 @@ namespace StuntCar.EditorTools
             PlayerSettings.WebGL.decompressionFallback = true; // works on any static host (GitHub Pages, itch.io)
             PlayerSettings.WebGL.template = "PROJECT:FullWindow";
 
-            // Keyboard uses the classic Input Manager, gamepads use the Input System package:
-            // run both ("activeInputHandler" 2).
+            // Input handling ("activeInputHandler": 2 = both, keyboard via the classic Input
+            // Manager, gamepads via the Input System) lives in ProjectSettings.asset. It must
+            // not be changed here: scripts are already compiled by the time this runs, and a
+            // define change makes the player build fail with "script class layout is
+            // incompatible between the editor and the player".
             var settings = AssetDatabase.LoadAllAssetsAtPath("ProjectSettings/ProjectSettings.asset");
             if (settings != null && settings.Length > 0)
             {
-                var so = new SerializedObject(settings[0]);
-                var handler = so.FindProperty("activeInputHandler");
+                var handler = new SerializedObject(settings[0]).FindProperty("activeInputHandler");
                 if (handler != null && handler.intValue != 2)
-                {
-                    handler.intValue = 2;
-                    so.ApplyModifiedPropertiesWithoutUndo();
-                }
+                    Debug.LogWarning("[StuntCar] activeInputHandler is " + handler.intValue + "; expected 2 (both). Gamepads may not work.");
             }
         }
 
