@@ -53,6 +53,20 @@ jobs:
           buildMethod: StuntCar.EditorTools.BuildScript.BuildWebGL
           allowDirtyBuild: true
 
+      # On failure, copy Unity's errors into run annotations so they can be read without
+      # downloading the full log (the runner keeps each step's log under _diag/pages).
+      - name: Report Unity errors
+        if: failure()
+        run: |
+          logs=$(sudo find / -path '*/_diag/pages/*.log' -mmin -120 2>/dev/null)
+          [ -z "$logs" ] && { echo "::warning::No runner step logs found"; exit 0; }
+          pattern='error CS|[Ee]xception|\[StuntCar\]|Scripts have compiler errors|Build Failed|BuildFailed|Aborting batchmode|Failed to|error:|Error:|License|Licensing|Package Manager|Cannot|not found'
+          sudo cat $logs | sed 's/^[0-9TZ:.-]* //' | grep -E "$pattern" | grep -v '::' | awk '!seen[$0]++' | head -n 10 | while IFS= read -r line; do
+            echo "::error::$(echo "$line" | cut -c1-900)"
+          done
+          tail=$(sudo cat $logs | sed 's/^[0-9TZ:.-]* //' | grep -v '::' | grep -vE '^\s*$' | tail -n 60 | cut -c1-200 | sed ':a;N;$!ba;s/%/%25/g;s/\n/%0A/g')
+          echo "::warning title=Last 60 log lines::$tail"
+
       - name: Collect the playable build
         run: |
           index=$(sudo find build -name index.html -not -path "*/TemplateData/*" | head -n 1)
