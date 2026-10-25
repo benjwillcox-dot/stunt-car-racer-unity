@@ -58,14 +58,19 @@ jobs:
       - name: Report Unity errors
         if: failure()
         run: |
-          logs=$(sudo find / -path '*/_diag/pages/*.log' -mmin -120 2>/dev/null)
-          [ -z "$logs" ] && { echo "::warning::No runner step logs found"; exit 0; }
-          pattern='error CS|[Ee]xception|\[StuntCar\]|Scripts have compiler errors|Build Failed|BuildFailed|Aborting batchmode|Failed to|error:|Error:|License|Licensing|Package Manager|Cannot|not found'
-          sudo cat $logs | sed 's/^[0-9TZ:.-]* //' | grep -E "$pattern" | grep -v '::' | awk '!seen[$0]++' | head -n 10 | while IFS= read -r line; do
-            echo "::error::$(echo "$line" | cut -c1-900)"
-          done
-          tail=$(sudo cat $logs | sed 's/^[0-9TZ:.-]* //' | grep -v '::' | grep -vE '^\s*$' | tail -n 60 | cut -c1-200 | sed ':a;N;$!ba;s/%/%25/g;s/\n/%0A/g')
-          echo "::warning title=Last 60 log lines::$tail"
+          sudo find / -path '*/_diag/pages/*.log' -mmin -120 2>/dev/null | sort > /tmp/pages.txt
+          [ -s /tmp/pages.txt ] || { echo "::warning::No runner step logs found"; exit 0; }
+          xargs -a /tmp/pages.txt sudo cat | sed 's/^[0-9TZ:.-]* //' | grep -v '^::' > /tmp/all.log
+          enc() { cut -c1-220 | sed ':a;N;$!ba;s/%/%25/g;s/\r//g;s/\n/%0A/g'; }
+          # Real errors first.
+          grep -E 'error CS[0-9]+|\[StuntCar\]|Exception:|Scripts have compiler errors|BuildFailedException|Error building Player|Shader error|Aborting batchmode|executeMethod' /tmp/all.log \
+            | awk '!seen[$0]++' | head -n 9 | while IFS= read -r line; do echo "::error::$(echo "$line" | cut -c1-900)"; done
+          # Then the 70 lines that led up to Unity's own "Build failed" message.
+          n=$(grep -n 'Build failed, with exit code' /tmp/all.log | head -n1 | cut -d: -f1)
+          if [ -n "$n" ]; then
+            ctx=$(sed -n "$((n>70 ? n-70 : 1)),${n}p" /tmp/all.log | grep -vE '^\s*$|UnityConnectServicesConfig|"[a-zA-Z]+": ' | tail -n 60 | enc)
+            echo "::warning title=Before Build failed::$ctx"
+          fi
 
       - name: Collect the playable build
         run: |
