@@ -25,6 +25,9 @@ namespace StuntCar
         public Material standSeats;
         public Material floodlight;
         public Material cable;
+        public Material tailLight;
+        public Material particleSmoke;
+        public Material particleSpark;
 
         public static GameBootstrap Instance { get; private set; }
         public Material AsphaltRuntime { get; private set; }
@@ -79,6 +82,15 @@ namespace StuntCar
             standSeats = standSeats ? standSeats : Fallback(new Color(0.2f, 0.3f, 0.55f), 0.3f);
             floodlight = floodlight ? floodlight : Fallback(new Color(1f, 1f, 0.9f), 0.5f);
             cable = cable ? cable : Fallback(new Color(0.1f, 0.1f, 0.1f), 0.2f);
+            tailLight = tailLight ? tailLight : Fallback(new Color(0.9f, 0.05f, 0.05f), 0.6f);
+            particleSmoke = particleSmoke ? particleSmoke : ParticleFallback();
+            particleSpark = particleSpark ? particleSpark : ParticleFallback();
+        }
+
+        static Material ParticleFallback()
+        {
+            var shader = Shader.Find("Universal Render Pipeline/Particles/Unlit");
+            return shader ? new Material(shader) : Fallback(Color.white, 0f);
         }
 
         static Material Fallback(Color c, float smoothness, float metallic = 0f)

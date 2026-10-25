@@ -69,6 +69,16 @@ namespace StuntCar
 
         /// <summary>Raised with the amount of damage taken, for sound and camera shake.</summary>
         public event System.Action<float> Damaged;
+        /// <summary>Hard contact: point and closing speed (landings and crashes), for dust.</summary>
+        public event System.Action<Vector3, float> Impact;
+        /// <summary>Body sliding along something: contact point and sliding speed, for sparks.</summary>
+        public event System.Action<Vector3, float> Scrape;
+
+        public int WheelCount => wheels == null ? 0 : wheels.Length;
+        public bool WheelGrounded(int i) => wheels[i].grounded;
+        public Vector3 WheelContact(int i) => wheels[i].contact;
+        public float WheelSlip(int i) => wheels[i].slip;
+        public bool WheelDriven(int i) => wheels[i].driven;
 
         class Wheel
         {
@@ -79,6 +89,8 @@ namespace StuntCar
             public float springLength;
             public float spin;
             public bool grounded;
+            public Vector3 contact;
+            public float slip;      // sideways sliding speed plus wheelspin, m/s
         }
 
         Wheel[] wheels;
@@ -120,6 +132,9 @@ namespace StuntCar
             Body.linearVelocity = Vector3.zero;
             Body.angularVelocity = Vector3.zero;
         }
+
+        /// <summary>Starts a race already damaged (league damage carries over).</summary>
+        public void SetDamage(float amount) => Damage = Mathf.Clamp(amount, 0f, 99f);
 
         public void AddDamage(float amount)
         {
@@ -229,9 +244,13 @@ namespace StuntCar
                 Body.AddForceAtPosition(wheelFwd * f.x + wheelRight * f.y, forcePoint);
 
                 w.spin += vLong / wheelRadius * Mathf.Rad2Deg * dt;
+                w.contact = hit.point;
+                bool spinning = w.driven && drivePerWheel > maxForce * 0.98f && Mathf.Abs(vLong) < 12f;
+                w.slip = Mathf.Abs(vLat) + (spinning ? 6f : 0f) + (braking > 0f && f.sqrMagnitude >= maxForce * maxForce * 0.95f ? Mathf.Abs(vLong) * 0.3f : 0f);
             }
             GroundedWheels = grounded;
 
+            if (worstLanding > 3f) Impact?.Invoke(transform.position, worstLanding);
             // Hard landings crack the chassis.
             if (worstLanding > landingDamageThreshold)
                 AddDamage((worstLanding - landingDamageThreshold) * landingDamageScale);
@@ -267,10 +286,20 @@ namespace StuntCar
         void OnCollisionEnter(Collision c)
         {
             if (c.contactCount == 0) return;
-            float impact = Mathf.Abs(Vector3.Dot(c.relativeVelocity, c.GetContact(0).normal));
+            var contact = c.GetContact(0);
+            float impact = Mathf.Abs(Vector3.Dot(c.relativeVelocity, contact.normal));
+            if (impact > 3f) Impact?.Invoke(contact.point, impact);
             bool otherCar = c.rigidbody != null;
             float threshold = otherCar ? impactDamageThreshold * 1.6f : impactDamageThreshold;
             if (impact > threshold) AddDamage((impact - threshold) * impactDamageScale);
+        }
+
+        void OnCollisionStay(Collision c)
+        {
+            if (c.contactCount == 0 || c.rigidbody != null) return;
+            var contact = c.GetContact(0);
+            Vector3 slide = Vector3.ProjectOnPlane(c.relativeVelocity, contact.normal);
+            if (slide.sqrMagnitude > 16f) Scrape?.Invoke(contact.point, slide.magnitude);
         }
     }
 }

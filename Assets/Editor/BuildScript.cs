@@ -83,14 +83,14 @@ namespace StuntCar.EditorTools
             PlayerSettings.WebGL.decompressionFallback = true; // works on any static host (GitHub Pages, itch.io)
             PlayerSettings.WebGL.template = "PROJECT:FullWindow";
 
-            // The game uses the classic Input Manager. If the project defaulted to the new
-            // Input System only, switch to "Both" so UnityEngine.Input keeps working.
+            // Keyboard uses the classic Input Manager, gamepads use the Input System package:
+            // run both ("activeInputHandler" 2).
             var settings = AssetDatabase.LoadAllAssetsAtPath("ProjectSettings/ProjectSettings.asset");
             if (settings != null && settings.Length > 0)
             {
                 var so = new SerializedObject(settings[0]);
                 var handler = so.FindProperty("activeInputHandler");
-                if (handler != null && handler.intValue == 1)
+                if (handler != null && handler.intValue != 2)
                 {
                     handler.intValue = 2;
                     so.ApplyModifiedPropertiesWithoutUndo();
@@ -193,6 +193,27 @@ namespace StuntCar.EditorTools
             }
             m.shader = shader;
             m.SetColor("_BaseColor", color);
+            EditorUtility.SetDirty(m);
+            return m;
+        }
+
+        // URP particle material: soft alpha-blended (smoke, dust) or additive and over-bright (sparks, for bloom).
+        static Material Particle(string name, Color color, bool additive)
+        {
+            string path = $"{GeneratedDir}/{name}.mat";
+            var shader = Shader.Find("Universal Render Pipeline/Particles/Unlit");
+            var m = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (m == null)
+            {
+                m = new Material(shader);
+                AssetDatabase.CreateAsset(m, path);
+            }
+            m.shader = shader;
+            m.SetColor("_BaseColor", color);
+            m.SetFloat("_Surface", 1f);                  // transparent
+            m.SetFloat("_Blend", additive ? 2f : 0f);    // additive : alpha
+            BaseShaderGUI.SetMaterialKeywords(m);         // URP's own blend/keyword setup
+            BaseShaderGUI.SetupMaterialBlendMode(m);
             EditorUtility.SetDirty(m);
             return m;
         }
@@ -314,6 +335,9 @@ namespace StuntCar.EditorTools
             boot.standSeats = Lit("StandSeats", new Color(0.18f, 0.28f, 0.55f), 0.3f);
             boot.floodlight = Lit("Floodlight", Color.white, 0.5f, 0f, new Color(4f, 4f, 3.6f));
             boot.cable = Unlit("Cable", new Color(0.08f, 0.08f, 0.08f));
+            boot.tailLight = Lit("TailLight", new Color(0.9f, 0.05f, 0.05f), 0.6f, 0f, new Color(3f, 0.15f, 0.1f));
+            boot.particleSmoke = Particle("ParticleSmoke", Color.white, false);
+            boot.particleSpark = Particle("ParticleSpark", new Color(4f, 2.2f, 0.8f), true);
 
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene, ScenePath);

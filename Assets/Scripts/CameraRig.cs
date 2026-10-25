@@ -41,7 +41,7 @@ namespace StuntCar
 
         void LateUpdate()
         {
-            if (Input.GetKeyDown(KeyCode.C))
+            if (GameInput.CameraPressed())
                 CurrentMode = CurrentMode == Mode.Chase ? Mode.Cockpit : Mode.Chase;
             if (!Target) return;
 

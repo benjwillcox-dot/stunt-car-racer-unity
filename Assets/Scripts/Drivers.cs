@@ -2,12 +2,11 @@ using UnityEngine;
 
 namespace StuntCar
 {
-    /// <summary>Keyboard (and gamepad via the default Input Manager axes).</summary>
+    /// <summary>Feeds keyboard / gamepad / wheel input (see <see cref="GameInput"/>) to the car.</summary>
     public class PlayerDriver : MonoBehaviour
     {
         CarController car;
         RaceCar raceCar;
-        bool axesAvailable = true;
 
         void Awake()
         {
@@ -17,34 +16,12 @@ namespace StuntCar
 
         void Update()
         {
-            float steer = 0f, accel = 0f;
-            if (Input.GetKey(KeyCode.LeftArrow) || Input.GetKey(KeyCode.A)) steer -= 1f;
-            if (Input.GetKey(KeyCode.RightArrow) || Input.GetKey(KeyCode.D)) steer += 1f;
-            if (Input.GetKey(KeyCode.UpArrow) || Input.GetKey(KeyCode.W)) accel += 1f;
-            if (Input.GetKey(KeyCode.DownArrow) || Input.GetKey(KeyCode.S)) accel -= 1f;
-            bool boost = Input.GetKey(KeyCode.Space) || Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.JoystickButton0);
-
-            // Gamepad: left stick steers, stick up/down for throttle/brake.
-            if (axesAvailable)
-            {
-                try
-                {
-                    float h = Input.GetAxis("Horizontal"), v = Input.GetAxis("Vertical");
-                    if (Mathf.Abs(h) > Mathf.Abs(steer)) steer = h;
-                    if (Mathf.Abs(v) > Mathf.Abs(accel)) accel = v;
-                }
-                catch (System.ArgumentException)
-                {
-                    axesAvailable = false;
-                }
-            }
-
+            GameInput.ReadDriving(out float steer, out float throttle, out float brake, out bool boost);
             car.Steer = steer;
-            car.Throttle = Mathf.Max(0f, accel);
-            car.Brake = Mathf.Max(0f, -accel);
+            car.Throttle = throttle;
+            car.Brake = brake;
             car.Boost = boost;
-
-            if (Input.GetKeyDown(KeyCode.R) && raceCar) raceCar.RequestRecovery();
+            if (GameInput.CranePressed() && raceCar) raceCar.RequestRecovery();
         }
     }
 
@@ -84,6 +61,9 @@ namespace StuntCar
 
             // Plan speed from a bit further ahead so it brakes before bends and crests.
             float target = Mathf.Min(track.AiSpeed(track.IndexAhead(i, 6f)), track.AiSpeed(track.IndexAhead(i, 20f)) + 6f) * Skill;
+            // Jumps need a minimum speed whatever the skill, or the car drops into the gap.
+            float minSpeed = Mathf.Max(track.AiMinSpeed(track.IndexAhead(i, 4f)), track.AiMinSpeed(track.IndexAhead(i, 30f)));
+            target = Mathf.Max(target, minSpeed * 1.05f);
             if (car.GroundedWheels == 0)
             {
                 car.Throttle = 0f; car.Brake = 0f;

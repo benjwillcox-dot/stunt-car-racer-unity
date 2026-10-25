@@ -26,7 +26,8 @@ namespace StuntCar
         public float HalfWidth => Width * 0.5f;
 
         Vector3[] centers, forwards, rights, ups;
-        float[] distances, aiSpeeds;
+        float[] distances, aiSpeeds, aiMinSpeeds;
+        bool[] gaps; // no road from this sample to the next
 
         public int Wrap(int i)
         {
@@ -41,6 +42,21 @@ namespace StuntCar
         public Vector3 Up(int i) => ups[Wrap(i)];
         public float Distance(int i) => distances[Wrap(i)];
         public float AiSpeed(int i) => aiSpeeds[Wrap(i)];
+        public float AiMinSpeed(int i) => aiMinSpeeds[Wrap(i)];
+        public bool IsGap(int i) => gaps[Wrap(i)];
+
+        /// <summary>A sample safely before any gap near <paramref name="i"/>, for dropping a car back on.</summary>
+        public int SafeIndex(int i)
+        {
+            for (int guard = 0; guard < centers.Length; guard++)
+            {
+                bool nearGap = false;
+                for (int k = -2; k <= 4; k++) if (IsGap(i + k)) { nearGap = true; break; }
+                if (!nearGap) return Wrap(i);
+                i--;
+            }
+            return Wrap(i);
+        }
         public Quaternion Rotation(int i) => Quaternion.LookRotation(Forward(i), Up(i));
 
         /// <summary>Index roughly <paramref name="metres"/> further along the track.</summary>
@@ -94,6 +110,8 @@ namespace StuntCar
             var cs = new List<Vector3>();
             var banks = new List<float>();
             var hints = new List<float>();
+            var mins = new List<float>();
+            var gapList = new List<bool>();
 
             for (int i = 0; i < n; i++)
             {
@@ -107,6 +125,8 @@ namespace StuntCar
                     cs.Add(CatmullRom(p0.Position, p1.Position, p2.Position, p3.Position, t));
                     banks.Add(Mathf.Lerp(p1.Bank, p2.Bank, st));
                     hints.Add(Mathf.Min(p1.SpeedHint, p2.SpeedHint));
+                    mins.Add(p1.MinSpeed);
+                    gapList.Add(p1.Gap);
                 }
             }
 
@@ -117,6 +137,8 @@ namespace StuntCar
             ups = new Vector3[count];
             distances = new float[count];
             aiSpeeds = hints.ToArray();
+            aiMinSpeeds = mins.ToArray();
+            gaps = gapList.ToArray();
 
             for (int i = 0; i < count; i++)
             {
@@ -172,6 +194,17 @@ namespace StuntCar
             for (int i = 0; i < n; i++)
             {
                 int j = i + 1;
+
+                if (gaps[i])
+                {
+                    // End faces where the road stops and starts again.
+                    if (!IsGap(i - 1))
+                        mb.AddQuad(SubSides, Pt(i, -hw, -Thickness), Pt(i, hw, -Thickness), Pt(i, hw, 0), Pt(i, -hw, 0));
+                    if (!IsGap(j))
+                        mb.AddQuad(SubSides, Pt(j, -hw, -Thickness), Pt(j, -hw, 0), Pt(j, hw, 0), Pt(j, hw, -Thickness));
+                    continue;
+                }
+
                 float v0 = distances[i] / 8f;
                 float v1 = (j < n ? distances[j] : Length) / 8f;
 
@@ -229,7 +262,7 @@ namespace StuntCar
             {
                 Vector3 topL = Pt(i, -inset, -Thickness);
                 Vector3 topR = Pt(i, inset, -Thickness);
-                if (topL.y < 1f || topR.y < 1f) { havePrev = false; continue; }
+                if (topL.y < 1f || topR.y < 1f || gaps[i] || IsGap(i - 1) || OverLowerDeck(i)) { havePrev = false; continue; }
 
                 Vector3 botL = new Vector3(topL.x, 0f, topL.z);
                 Vector3 botR = new Vector3(topR.x, 0f, topR.z);
@@ -260,6 +293,25 @@ namespace StuntCar
             go.transform.SetParent(transform, false);
             go.AddComponent<MeshFilter>().sharedMesh = mb.ToMesh("Scaffolding");
             go.AddComponent<MeshRenderer>().sharedMaterial = assets.scaffold;
+        }
+
+        // True where this part of the deck passes over another part of the track (the
+        // Roller Coaster crossover), so its scaffolding would stand on the road below.
+        bool OverLowerDeck(int i)
+        {
+            int n = centers.Length;
+            Vector3 c = centers[i];
+            float clear = HalfWidth + 2.5f;
+            for (int k = 0; k < n; k++)
+            {
+                int along = Mathf.Abs(k - i);
+                if (Mathf.Min(along, n - along) < 25) continue;
+                Vector3 o = centers[k];
+                if (o.y > c.y - 3f) continue;
+                float dx = o.x - c.x, dz = o.z - c.z;
+                if (dx * dx + dz * dz < clear * clear) return true;
+            }
+            return false;
         }
     }
 }

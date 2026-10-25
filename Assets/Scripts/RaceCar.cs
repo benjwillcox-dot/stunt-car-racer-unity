@@ -65,7 +65,7 @@ namespace StuntCar
         {
             if (Recovery.InProgress || Car.Wrecked) return;
             Recoveries++;
-            Recovery.Begin(track, Index);
+            Recovery.Begin(track, track.SafeIndex(Index));
         }
 
         void FixedUpdate()

@@ -49,6 +49,20 @@ namespace StuntCar
             Part(visual, PrimitiveType.Cube, new Vector3(0.6f, 1.12f, -0.28f), new Vector3(0.06f, 0.06f, 1.45f), new Vector3(-23f, 0, 0), a.chrome);
             Part(visual, PrimitiveType.Cube, new Vector3(-0.6f, 1.12f, -0.28f), new Vector3(0.06f, 0.06f, 1.45f), new Vector3(-23f, 0, 0), a.chrome);
 
+            // Front bumper bar, headlights, tail lights, mirrors.
+            Part(visual, PrimitiveType.Cube, new Vector3(0, 0.5f, 2.42f), new Vector3(1.7f, 0.1f, 0.1f), Vector3.zero, a.chrome);
+            Part(visual, PrimitiveType.Cube, new Vector3(0.6f, 0.66f, 2.36f), new Vector3(0.3f, 0.1f, 0.05f), Vector3.zero, a.floodlight);
+            Part(visual, PrimitiveType.Cube, new Vector3(-0.6f, 0.66f, 2.36f), new Vector3(0.3f, 0.1f, 0.05f), Vector3.zero, a.floodlight);
+            Part(visual, PrimitiveType.Cube, new Vector3(0.7f, 0.62f, -1.97f), new Vector3(0.3f, 0.12f, 0.05f), Vector3.zero, a.tailLight);
+            Part(visual, PrimitiveType.Cube, new Vector3(-0.7f, 0.62f, -1.97f), new Vector3(0.3f, 0.12f, 0.05f), Vector3.zero, a.tailLight);
+            Part(visual, PrimitiveType.Cube, new Vector3(0.78f, 0.98f, 0.15f), new Vector3(0.18f, 0.1f, 0.04f), new Vector3(0, -15f, 0), a.darkMetal);
+            Part(visual, PrimitiveType.Cube, new Vector3(-0.78f, 0.98f, 0.15f), new Vector3(0.18f, 0.1f, 0.04f), new Vector3(0, 15f, 0), a.darkMetal);
+            // Exhaust headers running from the V8 down the sides.
+            Part(visual, PrimitiveType.Cube, new Vector3(0.5f, 0.75f, 0.35f), new Vector3(0.08f, 0.08f, 1.3f), new Vector3(-8f, 0, 0), a.chrome);
+            Part(visual, PrimitiveType.Cube, new Vector3(-0.5f, 0.75f, 0.35f), new Vector3(0.08f, 0.08f, 1.3f), new Vector3(-8f, 0, 0), a.chrome);
+            // Side skirts and a racing stripe.
+            Part(visual, PrimitiveType.Cube, new Vector3(0, 0.715f, 0.2f), new Vector3(0.35f, 0.012f, 3.3f), Vector3.zero, a.kerbWhite);
+
             // Driver.
             Part(visual, PrimitiveType.Sphere, new Vector3(0, 1.12f, -0.5f), new Vector3(0.34f, 0.34f, 0.36f), Vector3.zero, a.helmet);
 
