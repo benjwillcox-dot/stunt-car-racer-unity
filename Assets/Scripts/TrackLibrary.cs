@@ -150,9 +150,9 @@ namespace StuntCar
                 var p = new List<TrackPoint> { P(0, H, 0), P(50, H, 0), P(100, H, 0) };
                 p.AddRange(Bend(100, 55, 55, -90, 90, 5));
                 p.Add(P(100, H, 110)); p.Add(P(62, H, 110));
-                p.Add(Jump(38, H + 2.5f, 110, 30));
-                p.Add(Takeoff(22, H + 3.6f, 110, 30));
-                p.Add(P(2, H + 3.6f, 110, 0, 40)); p.Add(P(-16, H + 1.2f, 110)); p.Add(P(-45, H, 110)); p.Add(P(-100, H, 110));
+                p.Add(Jump(38, H + 2.5f, 110, 33));
+                p.Add(Takeoff(22, H + 3.6f, 110, 33));
+                p.Add(P(2, H + 2.4f, 110, 0, 40)); p.Add(P(-16, H + 1.0f, 110)); p.Add(P(-45, H, 110)); p.Add(P(-100, H, 110));
                 p.AddRange(Bend(-100, 55, 55, 90, 270, 5));
                 p.Add(P(-100, H, 0)); p.Add(P(-50, H, 0));
                 list.Add(Make("Draw Bridge", 2, "The bridge is up. Carry enough speed to clear the gap.", p));

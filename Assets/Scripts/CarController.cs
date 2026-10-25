@@ -95,6 +95,7 @@ namespace StuntCar
 
         Wheel[] wheels;
         float smoothSteer;
+        float landingCooldown, landingPeak;
         int rayMask;
 
         public void Init(Vector3[] mounts, Transform[] wheelVisuals)
@@ -251,9 +252,23 @@ namespace StuntCar
             GroundedWheels = grounded;
 
             if (worstLanding > 3f) Impact?.Invoke(transform.position, worstLanding);
-            // Hard landings crack the chassis.
+            // Hard landings crack the chassis. A landing lasts several physics steps, so only
+            // charge for its worst moment.
+            landingCooldown = Mathf.Max(0f, landingCooldown - dt);
             if (worstLanding > landingDamageThreshold)
-                AddDamage((worstLanding - landingDamageThreshold) * landingDamageScale);
+            {
+                float amount = (worstLanding - landingDamageThreshold) * landingDamageScale;
+                if (landingCooldown > 0f)
+                {
+                    if (amount > landingPeak) { AddDamage(amount - landingPeak); landingPeak = amount; }
+                }
+                else
+                {
+                    AddDamage(amount);
+                    landingPeak = amount;
+                }
+                landingCooldown = 0.3f;
+            }
 
             Vector3 v = Body.linearVelocity;
             Body.AddForce(-v * v.magnitude * dragCoefficient);

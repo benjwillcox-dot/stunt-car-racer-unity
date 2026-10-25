@@ -192,7 +192,7 @@ namespace StuntCar
 
             resultBody =
                 $"Your time:  {(playerFinished ? FormatTime(player.FinishTime) : "DNF")}\n" +
-                (rival ? $"{rival.DriverName}:  {(rivalFinished ? FormatTime(rival.FinishTime) : "did not finish")}\n" : "") +
+                (rival ? $"{rival.DriverName}:  {(rivalFinished ? FormatTime(rival.FinishTime) : rival.Car.Wrecked ? "wrecked" : "still racing")}\n" : "") +
                 $"Your best lap:  {FormatTime(player.BestLap)}\n" +
                 (rival ? $"{rival.DriverName} best lap:  {FormatTime(rival.BestLap)}\n" : "") +
                 $"Crane recoveries:  {player.Recoveries}\n" +

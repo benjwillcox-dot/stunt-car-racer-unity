@@ -59,8 +59,9 @@ namespace StuntCar
             }
             else
             {
-                transform.position = Target.TransformPoint(new Vector3(0f, 1.28f, -0.45f));
-                transform.rotation = Target.rotation * Quaternion.Euler(7f, 0f, 0f);
+                // Eye above the roll-cage line so the road shows over the engine.
+                transform.position = Target.TransformPoint(new Vector3(0f, 1.67f, -0.35f));
+                transform.rotation = Target.rotation * Quaternion.Euler(2.5f, 0f, 0f);
                 cam.fieldOfView = Mathf.Lerp(cam.fieldOfView, 72f + speed * 0.15f + (boosting ? 5f : 0f), Time.deltaTime * 3f);
             }
 

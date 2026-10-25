@@ -4,28 +4,39 @@ A fan remake of Geoff Crammond's 1989 *Stunt Car Racer* in **Unity 6.3 (URP)**, 
 entirely in the cloud. No local Unity install or GPU is needed: every push to `main` builds
 a WebGL version with GitHub Actions ([GameCI](https://game.ci)) and publishes it to GitHub Pages.
 
-## What's in v0.1
+## What's in it
 
-- Raised circuits on scaffolding, built from spline control points (`Assets/Scripts/TrackLibrary.cs`)
-  - Little Ramp, Hump Back (Division 4), Stepping Stones, Big Ramp (Division 3)
-- Raycast-suspension car with a tyre grip model, rear-wheel drive, limited **boost**
-- **Chassis damage** from hard landings and crashes – at 100% you're wrecked
+- **All 8 tracks**, paired by division: Little Ramp and Hump Back (Div 4), Stepping Stones and
+  Big Ramp (Div 3), Ski Jump and Draw Bridge (Div 2), High Jump and Roller Coaster (Div 1).
+  Draw Bridge, Ski Jump and High Jump have gaps you have to jump; Roller Coaster is a figure
+  of eight that crosses over itself.
+- Raycast-suspension car with a tyre grip model, rear-wheel drive and limited **boost**
+- **Chassis damage** from hard landings and crashes; at 100% you're wrecked
 - **Crane recovery** when you fall off or end up on your roof (the time it takes is the penalty)
-- 3-lap head-to-head race against an AI rival, or practice mode
-- Original scoring: 2 points for the win, 1 for the fastest lap
+- **League**: 4 divisions of 3 drivers, 4-race seasons, 2 points a win and 1 for the fastest lap,
+  promotion and relegation; damage carries between races in a season. Saved in the browser.
+- Single race v CPU and practice modes
+- Keyboard, **gamepad** (Input System) and joystick-style steering wheels
+- Tyre smoke, scrape sparks and landing dust
 - Chase camera and over-the-bonnet cockpit view
 - Synthesised V8 engine sound
 - URP lighting: soft shadows, procedural sky, fog, bloom, ACES tonemapping
 
+## Browser preview
+
+`preview/index.html` is a Three.js port of the same game (same track points, physics numbers,
+AI and league rules) that runs in any browser without a Unity build. Use it to try handling
+changes quickly; tuning values carry straight back to `Assets/Scripts`.
+
 ## Controls
 
-| Key | Action |
-| --- | --- |
-| Arrows / WASD | Steer, accelerate, brake/reverse |
-| Space / Left Shift | Boost |
-| C | Toggle chase / cockpit camera |
-| R | Call the crane |
-| Esc | Back to menu |
+| Keyboard | Gamepad | Action |
+| --- | --- | --- |
+| Arrows / WASD | Left stick, triggers | Steer, accelerate, brake/reverse |
+| Space / Left Shift | A | Boost |
+| C | Y | Toggle chase / cockpit camera |
+| R | B | Call the crane |
+| Esc | Start | Menu (retire, in a league race) |
 
 ## How the build works
 
@@ -56,9 +67,9 @@ You can also open the project in the Unity Editor (6000.3.27f1) and run
 ## Roadmap
 
 1. Tune the handling against the original's feel
-2. Remaining tracks: High Jump, Roller Coaster, Ski Jump, Draw Bridge (needs gaps in the deck)
-3. Full league: 4 divisions × 3 drivers, promotion and relegation, damage carried between races
-4. Real car and scenery models, sound effects, gamepad support via the Input System
+2. Moving drawbridge on Draw Bridge
+3. Steering-wheel pedal mapping and a controls screen
+4. Real car and scenery models, recorded sound effects
 5. Two-player split screen
 
 *Stunt Car Racer* is © its respective rights holders. This is a non-commercial fan project.
