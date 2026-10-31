@@ -24,7 +24,7 @@ namespace StuntCar
 
         [Header("Suspension")]
         public float restLength = 0.45f;
-        public float wheelRadius = 0.36f;
+        public float wheelRadius = 0.36f;       // default; Init can give each wheel its own
         public float springRate = 36000f;
         public float damperRate = 3200f;
         public float bumpStopRate = 140000f;
@@ -83,6 +83,7 @@ namespace StuntCar
         class Wheel
         {
             public Vector3 mount;          // local position of the top of the suspension
+            public float radius;
             public bool front, driven;
             public Transform visual;
             public float lastCompression;
@@ -98,7 +99,10 @@ namespace StuntCar
         float landingCooldown, landingPeak;
         int rayMask;
 
-        public void Init(Vector3[] mounts, Transform[] wheelVisuals)
+        /// <summary>Spring length with the car sitting still on level ground.</summary>
+        public float RestingSpringLength(int wheelCount) => restLength - mass * 9.81f / wheelCount / springRate;
+
+        public void Init(Vector3[] mounts, Transform[] wheelVisuals, float[] radii = null)
         {
             Body = GetComponent<Rigidbody>();
             Body.mass = mass;
@@ -115,6 +119,7 @@ namespace StuntCar
                 wheels[i] = new Wheel
                 {
                     mount = mounts[i],
+                    radius = radii != null ? radii[i] : wheelRadius,
                     front = mounts[i].z > 0f,
                     driven = mounts[i].z < 0f,
                     visual = wheelVisuals[i],
@@ -190,7 +195,7 @@ namespace StuntCar
             foreach (var w in wheels)
             {
                 Vector3 origin = transform.TransformPoint(w.mount);
-                float maxDist = restLength + wheelRadius;
+                float maxDist = restLength + w.radius;
 
                 if (!Physics.Raycast(origin, -up, out RaycastHit hit, maxDist, rayMask, QueryTriggerInteraction.Ignore))
                 {
@@ -202,7 +207,7 @@ namespace StuntCar
 
                 grounded++;
                 w.grounded = true;
-                w.springLength = Mathf.Max(0f, hit.distance - wheelRadius);
+                w.springLength = Mathf.Max(0f, hit.distance - w.radius);
                 float compression = 1f - w.springLength / restLength;            // 0 = extended, 1 = fully compressed
                 // Rate the mount is closing on the (static) road. Using velocity rather than the change in
                 // compression avoids a huge damper spike on the first frame after landing.
@@ -244,7 +249,7 @@ namespace StuntCar
                 Vector3 forcePoint = hit.point + up * tyreForceLift;
                 Body.AddForceAtPosition(wheelFwd * f.x + wheelRight * f.y, forcePoint);
 
-                w.spin += vLong / wheelRadius * Mathf.Rad2Deg * dt;
+                w.spin += vLong / w.radius * Mathf.Rad2Deg * dt;
                 w.contact = hit.point;
                 bool spinning = w.driven && drivePerWheel > maxForce * 0.98f && Mathf.Abs(vLong) < 12f;
                 w.slip = Mathf.Abs(vLat) + (spinning ? 6f : 0f) + (braking > 0f && f.sqrMagnitude >= maxForce * maxForce * 0.95f ? Mathf.Abs(vLong) * 0.3f : 0f);

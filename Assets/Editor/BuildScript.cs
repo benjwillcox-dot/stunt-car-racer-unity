@@ -181,6 +181,20 @@ namespace StuntCar.EditorTools
             return m;
         }
 
+        // Livery for the Blender car: palette albedo, metallic (R) / smoothness (A) and emission maps.
+        static Material CarSkin(string name, string scheme)
+        {
+            string tex = CarModelImport.Folder + "Textures/StuntCar_" + scheme;
+            var m = Lit(name, Color.white, 1f, 0f, new Color(2f, 2f, 2f));
+            m.SetTexture("_BaseMap", AssetDatabase.LoadAssetAtPath<Texture2D>(tex + "_Albedo.png"));
+            m.SetTexture("_MetallicGlossMap", AssetDatabase.LoadAssetAtPath<Texture2D>(tex + "_MetallicSmoothness.png"));
+            m.EnableKeyword("_METALLICSPECGLOSSMAP");
+            m.SetFloat("_SmoothnessTextureChannel", 0f); // smoothness from the metallic map's alpha
+            m.SetTexture("_EmissionMap", AssetDatabase.LoadAssetAtPath<Texture2D>(tex + "_Emission.png"));
+            EditorUtility.SetDirty(m);
+            return m;
+        }
+
         static Material Unlit(string name, Color color)
         {
             string path = $"{GeneratedDir}/{name}.mat";
@@ -338,6 +352,9 @@ namespace StuntCar.EditorTools
             boot.tailLight = Lit("TailLight", new Color(0.9f, 0.05f, 0.05f), 0.6f, 0f, new Color(3f, 0.15f, 0.1f));
             boot.particleSmoke = Particle("ParticleSmoke", Color.white, false);
             boot.particleSpark = Particle("ParticleSpark", new Color(4f, 2.2f, 0.8f), true);
+            boot.carModel = AssetDatabase.LoadAssetAtPath<GameObject>(CarModelImport.Folder + "StuntCar.fbx");
+            boot.playerCarSkin = CarSkin("CarYellow", "Yellow");
+            boot.opponentCarSkin = CarSkin("CarWhite", "White");
 
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene, ScenePath);

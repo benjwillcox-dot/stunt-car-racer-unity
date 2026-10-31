@@ -28,6 +28,10 @@ namespace StuntCar
         public Material tailLight;
         public Material particleSmoke;
         public Material particleSpark;
+        // The Blender car and its two palette liveries. Cars fall back to primitives without them.
+        public GameObject carModel;
+        public Material playerCarSkin;
+        public Material opponentCarSkin;
 
         public static GameBootstrap Instance { get; private set; }
         public Material AsphaltRuntime { get; private set; }
