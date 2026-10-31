@@ -204,6 +204,21 @@ T("Roller Coaster", 1, "Figure of eight. Over the top, round, then underneath yo
 
 // ============================================================== track runtime
 const WIDTH = 8, HW = 4, THICK = 0.6, KERB = 0.7, SPACING = 2;
+// Kerbs slope up from flush with the asphalt to KERB_H at the deck edge, as in Track.cs. The
+// profile is [fraction of KERB across, fraction of KERB_H up], from the inner edge out.
+const KERB_H = 0.09, KERB_BLOCK = 1.5, EDGE_LINE = 0.12, KERB_PROFILE = [[0, 0], [0.4, 0.5], [0.8, 0.89], [1, 1]];
+// Height of the deck top at a lateral offset, its slope (rise per metre to the right) and whether it's kerb.
+function deckTop(lat) {
+  const x = (Math.abs(lat) - (HW - KERB)) / KERB;
+  if (x <= 0) return { h: 0, slope: 0, kerb: false };
+  for (let k = 1; k < KERB_PROFILE.length; k++) {
+    const [x0, y0] = KERB_PROFILE[k - 1], [x1, y1] = KERB_PROFILE[k];
+    if (x <= x1 || k === KERB_PROFILE.length - 1) {
+      const t = Math.min(1, (x - x0) / (x1 - x0));
+      return { h: KERB_H * (y0 + (y1 - y0) * t), slope: Math.sign(lat) * KERB_H * (y1 - y0) / ((x1 - x0) * KERB), kerb: true };
+    }
+  }
+}
 function catmull(p0, p1, p2, p3, t) {
   const t2 = t * t, t3 = t2 * t, o = new V3();
   for (const k of ["x", "y", "z"])
@@ -402,22 +417,44 @@ function buildTrackMesh(tr) {
     for (const t of [ua, ub, uc, ua, uc, ud]) uv[s].push(t[0], t[1]);
   };
   const Z = [0, 0];
-  const N = tr.N, inner = HW - KERB;
+  const N = tr.N, inner = HW - KERB, line = inner - EDGE_LINE, lu = EDGE_LINE / (2 * inner);
+  // Deck top across its width, left edge to right, as [lateral, height].
+  const top = [];
+  for (let k = KERB_PROFILE.length - 1; k >= 0; k--) top.push([-inner - KERB_PROFILE[k][0] * KERB, KERB_PROFILE[k][1] * KERB_H]);
+  for (const [x, y] of KERB_PROFILE) top.push([inner + x * KERB, y * KERB_H]);
+  const at = (i, t, lat, h) => tr.pt(i, lat, h).lerp(tr.pt(i + 1, lat, h), t);
+  // Blocks are cut by distance, an even number round the lap, so they're all one length and alternate.
+  const block = tr.length / (2 * Math.max(1, Math.round(tr.length / (2 * KERB_BLOCK))));
+  const kerbs = (i, t0, t1, s) => {
+    for (let k = 0; k + 1 < KERB_PROFILE.length; k++) {
+      const la = inner + KERB_PROFILE[k][0] * KERB, ha = KERB_PROFILE[k][1] * KERB_H;
+      const lb = inner + KERB_PROFILE[k + 1][0] * KERB, hb = KERB_PROFILE[k + 1][1] * KERB_H;
+      quad(s, at(i, t0, la, ha), at(i, t0, lb, hb), at(i, t1, lb, hb), at(i, t1, la, ha), Z, Z, Z, Z);
+      quad(s, at(i, t0, -lb, hb), at(i, t0, -la, ha), at(i, t1, -la, ha), at(i, t1, -lb, hb), Z, Z, Z, Z);
+    }
+  };
   // Winding for three.js (counter-clockwise front faces): order points so normals face out.
   for (let i = 0; i < N; i++) {
     const j = i + 1;
     if (tr.gap[i]) {
-      if (!tr.isGap(i - 1)) quad(3, tr.pt(i, -HW, -THICK), tr.pt(i, -HW, 0), tr.pt(i, HW, 0), tr.pt(i, HW, -THICK), Z, Z, Z, Z);
-      if (!tr.isGap(j)) quad(3, tr.pt(j, -HW, -THICK), tr.pt(j, HW, -THICK), tr.pt(j, HW, 0), tr.pt(j, -HW, 0), Z, Z, Z, Z);
+      for (let k = 0; k + 1 < top.length; k++) {
+        const [la, ha] = top[k], [lb, hb] = top[k + 1];
+        if (!tr.isGap(i - 1)) quad(3, tr.pt(i, la, -THICK), tr.pt(i, la, ha), tr.pt(i, lb, hb), tr.pt(i, lb, -THICK), Z, Z, Z, Z);
+        if (!tr.isGap(j)) quad(3, tr.pt(j, la, -THICK), tr.pt(j, lb, -THICK), tr.pt(j, lb, hb), tr.pt(j, la, ha), Z, Z, Z, Z);
+      }
       continue;
     }
-    const v0 = tr.d[i] / 8, v1 = (j < N ? tr.d[j] : tr.length) / 8;
-    quad(0, tr.pt(i, -inner, 0), tr.pt(i, inner, 0), tr.pt(j, inner, 0), tr.pt(j, -inner, 0), [0, v0], [1, v0], [1, v1], [0, v1]);
-    const k = (i & 1) ? 2 : 1;
-    quad(k, tr.pt(i, -HW, 0), tr.pt(i, -inner, 0), tr.pt(j, -inner, 0), tr.pt(j, -HW, 0), Z, Z, Z, Z);
-    quad(k, tr.pt(i, inner, 0), tr.pt(i, HW, 0), tr.pt(j, HW, 0), tr.pt(j, inner, 0), Z, Z, Z, Z);
-    quad(3, tr.pt(i, HW, 0), tr.pt(i, HW, -THICK), tr.pt(j, HW, -THICK), tr.pt(j, HW, 0), Z, Z, Z, Z);
-    quad(3, tr.pt(i, -HW, -THICK), tr.pt(i, -HW, 0), tr.pt(j, -HW, 0), tr.pt(j, -HW, -THICK), Z, Z, Z, Z);
+    const d0 = tr.d[i], d1 = j < N ? tr.d[j] : tr.length, v0 = d0 / 8, v1 = d1 / 8;
+    quad(0, tr.pt(i, -line, 0), tr.pt(i, line, 0), tr.pt(j, line, 0), tr.pt(j, -line, 0), [lu, v0], [1 - lu, v0], [1 - lu, v1], [lu, v1]);
+    quad(2, tr.pt(i, -inner, 0), tr.pt(i, -line, 0), tr.pt(j, -line, 0), tr.pt(j, -inner, 0), Z, Z, Z, Z);
+    quad(2, tr.pt(i, line, 0), tr.pt(i, inner, 0), tr.pt(j, inner, 0), tr.pt(j, line, 0), Z, Z, Z, Z);
+    for (let t0 = 0; t0 < 1;) {
+      const b = Math.floor(lerp(d0, d1, t0) / block + 0.001), t1 = Math.min(1, ((b + 1) * block - d0) / (d1 - d0));
+      kerbs(i, t0, t1, (b & 1) ? 2 : 1);
+      t0 = t1;
+    }
+    quad(3, tr.pt(i, HW, KERB_H), tr.pt(i, HW, -THICK), tr.pt(j, HW, -THICK), tr.pt(j, HW, KERB_H), Z, Z, Z, Z);
+    quad(3, tr.pt(i, -HW, -THICK), tr.pt(i, -HW, KERB_H), tr.pt(j, -HW, KERB_H), tr.pt(j, -HW, -THICK), Z, Z, Z, Z);
     quad(3, tr.pt(i, HW, -THICK), tr.pt(i, -HW, -THICK), tr.pt(j, -HW, -THICK), tr.pt(j, HW, -THICK), Z, Z, Z, Z);
   }
   for (let row = 0; row < 2; row++) for (let c = 0; c < 8; c++) {
@@ -525,7 +562,7 @@ class Car {
     this.throttle = 0; this.brake = 0; this.steer = 0; this.boost = false; this.locked = false; this.kinematic = false;
     this.damage = 0; this.boostLeft = CFG.boostCap; this.steerS = 0; this.steerAngle = 0; this.boosting = false; this.grounded = 0;
     this.hint = 0;
-    this.wheels = MOUNTS.map(([x, z]) => ({ mount: new V3(x, MOUNT_Y, z), front: z > 0, driven: z < 0, len: CFG.rest, spin: 0, grounded: false, contact: new V3(), slip: 0 }));
+    this.wheels = MOUNTS.map(([x, z]) => ({ mount: new V3(x, MOUNT_Y, z), front: z > 0, driven: z < 0, len: CFG.rest, spin: 0, grounded: false, kerb: false, contact: new V3(), slip: 0 }));
     this.onDamage = null; this.onImpact = null; this.onScrape = null;
   }
   get wrecked() { return this.damage >= 100; }
@@ -557,10 +594,14 @@ class Car {
     if (s.road) {
       const dn = dir.dot(s.u);
       if (dn < -0.2) {
-        const t = s.height / -dn;
-        if (t >= 0 && t <= maxD) {
-          const hp = origin.clone().addScaledVector(dir, t);
-          if (Math.abs(new V3().subVectors(hp, s.c).dot(s.r)) <= HW) best = { t, point: hp, normal: s.u };
+        // Find where the ray meets the asphalt's plane, then lift the hit onto the kerb there.
+        let t = s.height / -dn, hp = origin.clone().addScaledVector(dir, t);
+        const lat = new V3().subVectors(hp, s.c).dot(s.r);
+        if (Math.abs(lat) <= HW) {
+          const deck = deckTop(lat);
+          if (deck.h > 0) { t = (s.height - deck.h) / -dn; hp = origin.clone().addScaledVector(dir, t); }
+          const normal = deck.slope ? s.u.clone().addScaledVector(s.r, -deck.slope).normalize() : s.u;
+          if (t >= 0 && t <= maxD) best = { t, point: hp, normal, kerb: deck.kerb };
         }
       }
     }
@@ -593,8 +634,8 @@ class Car {
     const down = up.clone().negate();
     for (const w of this.wheels) {
       const origin = this.world(w.mount), hit = this.ray(origin, down, CFG.rest + CFG.radius, track);
-      if (!hit) { w.grounded = false; w.len += clamp(CFG.rest - w.len, -dt * 2, dt * 2); w.slip = 0; continue; }
-      grounded++; w.grounded = true;
+      if (!hit) { w.grounded = false; w.kerb = false; w.len += clamp(CFG.rest - w.len, -dt * 2, dt * 2); w.slip = 0; continue; }
+      grounded++; w.grounded = true; w.kerb = !!hit.kerb;
       w.len = Math.max(0, hit.t - CFG.radius);
       const comp = 1 - w.len / CFG.rest, compSpeed = -this.pointVel(origin).dot(up);
       let load = comp * CFG.rest * CFG.spring + compSpeed * CFG.damper;
@@ -652,7 +693,10 @@ class Car {
       const pt = this.world(lp);
       let n = null, pen = 0;
       const s = track.surface(pt, this.hint);
-      if (s.road && Math.abs(s.lateral) <= HW && s.height < 0 && s.height > -0.9) { n = s.u; pen = -s.height; }
+      if (s.road && Math.abs(s.lateral) <= HW) {
+        const h = deckTop(s.lateral).h;
+        if (s.height < h && s.height > -0.9) { n = s.u; pen = h - s.height; }
+      }
       if (pt.y < 0 && -pt.y > pen) { n = new V3(0, 1, 0); pen = -pt.y; }
       if (!n) continue;
       const r = new V3().subVectors(pt, this.p), vr = this.pointVel(pt), vn = vr.dot(n);
@@ -805,6 +849,52 @@ function readPad() {
   const edge = {}; for (const k in now) edge[k] = now[k] && !padPrev[k]; padPrev = now;
   const sx = Math.abs(p.axes[0] || 0) > 0.08 ? p.axes[0] : 0;
   return { steer: sx, gas: v(7), brake: v(6), boost: now.a, edge };
+}
+// Pad rumble, the same feel as PlayerDriver in the Unity build. Each motor runs at whichever
+// of these wants it most: the kerbs (a buzz, stronger with speed and both wheels on, and a knock
+// as each wheel climbs on), a fading clunk when you hit the other car, and a gentle buzz while
+// the tyres slide. Uses the Gamepad API's vibrationActuator (Chrome and Edge; elsewhere it does nothing).
+const rumble = { wheels: 0, knock: 0, clunk: 0, clunkLen: 0, clunkStrength: 0, on: false, resendAt: 0, sent: [0, 0] };
+function rumbleClunk(speed) {
+  const s = clamp((speed - 1) / 11, 0, 1), strength = 0.45 + 0.55 * s;
+  if (s <= 0 || (rumble.clunk > 0 && strength < rumble.clunkStrength * rumble.clunk / rumble.clunkLen)) return;
+  rumble.clunkStrength = strength; rumble.clunk = rumble.clunkLen = 0.1 + 0.15 * s;
+}
+function padRumble(car, dt) {
+  let on = 0, slip = 0;
+  if (car && !car.kinematic) for (const w of car.wheels) { if (w.kerb) on++; if (w.grounded) slip = Math.max(slip, w.slip); }
+  if (on > rumble.wheels) rumble.knock = 0.09;
+  rumble.wheels = on; rumble.knock = Math.max(0, rumble.knock - dt); rumble.clunk = Math.max(0, rumble.clunk - dt);
+  let low = 0, high = 0;
+  const pace = car ? clamp((Math.abs(car.speed) - 2) / 33, 0, 1) : 0;
+  if (on && pace > 0) {
+    const amount = (0.3 + 0.7 * pace) * (on >= 2 ? 1 : 0.6);
+    low = amount * 0.35 + (rumble.knock > 0 ? 0.5 * pace : 0); high = amount * 0.8;
+  }
+  const slide = clamp((slip - 3.5) / 8.5, 0, 1);   // smoke starts at 3.5 too
+  if (slide > 0) high = Math.max(high, 0.08 + 0.17 * slide);
+  if (rumble.clunk > 0) {
+    const fade = rumble.clunk / rumble.clunkLen;
+    low = Math.max(low, rumble.clunkStrength * fade); high = Math.max(high, rumble.clunkStrength * 0.4 * fade);
+  }
+  if (!car || !document.hasFocus()) low = high = 0;
+  setRumble(low, high);
+}
+function setRumble(strong, weak) {
+  // Each call starts a new timed effect, so rather than every frame, resend a little before the
+  // last one runs out, or straight away when it starts, stops or kicks up (a clunk).
+  const on = strong > 0 || weak > 0, now = performance.now();
+  const kick = strong > rumble.sent[0] + 0.15 || weak > rumble.sent[1] + 0.15;
+  if (on ? rumble.on && !kick && now < rumble.resendAt : !rumble.on) return;
+  rumble.on = on; rumble.resendAt = now + 100; rumble.sent = [strong, weak];
+  let pads = []; try { pads = navigator.getGamepads ? navigator.getGamepads() : []; } catch (e) { return; }
+  for (const p of pads) {
+    const a = p && p.vibrationActuator;
+    if (!a) continue;
+    const done = on ? a.playEffect("dual-rumble", { startDelay: 0, duration: 200, strongMagnitude: Math.min(1, strong), weakMagnitude: Math.min(1, weak) })
+      : a.reset && a.reset();
+    if (done && done.catch) done.catch(() => {});
+  }
 }
 function controls() {
   const pad = readPad();
@@ -1187,6 +1277,7 @@ function frame(t) {
     for (const r of [game.player, game.rival]) if (r) { r.update(dt, game.now); r.car.sync(); tyreSmoke(r.car, dt); }
     if (actx) for (const r of [game.player, game.rival]) if (r) updateEngine(r.car, game.player.car.p);
   }
+  padRumble(game.player ? game.player.car : null, dt);
   updateParticles(dt);
   updateCamera(dt);
   if (game.state === "countdown" || game.state === "racing" || game.state === "finished") updateHud();
@@ -1202,7 +1293,8 @@ function carVsCar(a, b) {
       if (vr < 0) {
         const j = -1.2 * vr / (2 / CFG.mass);
         a.impulse(n.clone().multiplyScalar(j), pa); b.impulse(n.clone().multiplyScalar(-j), pb);
-        const hit = -vr; if (hit > CFG.hitThr * 1.6) { a.addDamage((hit - CFG.hitThr * 1.6) * CFG.hitScale); b.addDamage((hit - CFG.hitThr * 1.6) * CFG.hitScale); }
+        const hit = -vr; if (a.isPlayer || b.isPlayer) rumbleClunk(hit);
+        if (hit > CFG.hitThr * 1.6) { a.addDamage((hit - CFG.hitThr * 1.6) * CFG.hitScale); b.addDamage((hit - CFG.hitThr * 1.6) * CFG.hitScale); }
       }
     }
   }

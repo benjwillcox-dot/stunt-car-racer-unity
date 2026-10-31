@@ -3,28 +3,120 @@ using UnityEngine;
 namespace StuntCar
 {
     /// <summary>
-    /// Builds a stunt car out of primitives: low wedge chassis, exposed V8 with chrome intake,
-    /// roll cage, rear wing and big exposed wheels. Placeholder art until real models exist.
+    /// Builds a stunt car: the Blender model (Assets/Models/StuntCar) when the build script has
+    /// hooked it up, otherwise a primitive stand-in with the same layout, so a fresh clone still runs.
     /// </summary>
     public static class CarFactory
     {
         const int IgnoreRaycastLayer = 2;
+        static readonly string[] ModelWheels = { "Wheel_FL", "Wheel_FR", "Wheel_RL", "Wheel_RR" };
+        static readonly string[] ModelCalipers = { "Caliper_FL", "Caliper_FR", "Caliper_RL", "Caliper_RR" };
 
         public static CarController Create(string name, Material paint, GameBootstrap a)
         {
             var go = new GameObject(name);
             go.layer = IgnoreRaycastLayer;
             go.AddComponent<Rigidbody>();
+            return HasWheels(a.carModel) ? FromModel(go, paint, a) : FromPrimitives(go, paint, a);
+        }
 
+        static bool HasWheels(GameObject model)
+        {
+            if (!model) return false;
+            foreach (var w in ModelWheels)
+                if (!FindDeep(model.transform, w)) return false;
+            return true;
+        }
+
+        // The FBX may or may not keep its own root node, so look at any depth.
+        static Transform FindDeep(Transform root, string name)
+        {
+            foreach (var t in root.GetComponentsInChildren<Transform>(true))
+                if (t.name == name) return t;
+            return null;
+        }
+
+        static void AddBox(GameObject go, Vector3 center, Vector3 size, GameBootstrap a)
+        {
+            var box = go.AddComponent<BoxCollider>();
+            box.center = center;
+            box.size = size;
+            box.sharedMaterial = a.BodyPhysics;
+        }
+
+        /// <summary>
+        /// The Blender car. Wheel mounts and radii are read off its Wheel_* objects so the physics
+        /// matches what you see; the livery follows the paint (player yellow, rival white).
+        /// </summary>
+        static CarController FromModel(GameObject go, Material paint, GameBootstrap a)
+        {
+            // Physics shape: chassis plus roll cage, so roof landings hit something. The chassis box
+            // keeps the primitive car's height so landings and scrapes feel the same.
+            AddBox(go, new Vector3(0f, 0.6f, -0.03f), new Vector3(1.8f, 0.4f, 4.2f), a);
+            AddBox(go, new Vector3(0f, 1.12f, -0.46f), new Vector3(0.96f, 0.62f, 1.0f), a);
+
+            var model = Object.Instantiate(a.carModel, go.transform, false).transform;
+            model.name = "Visual";
+            // The controller treats +Z as the front; turn the model round if it imported facing back.
+            if (go.transform.InverseTransformPoint(FindDeep(model, "Wheel_FL").position).z < 0f)
+                model.localRotation = Quaternion.Euler(0f, 180f, 0f) * model.localRotation;
+            var skin = paint == a.opponentPaint ? a.opponentCarSkin : a.playerCarSkin;
+            foreach (var r in model.GetComponentsInChildren<Renderer>())
+            {
+                r.sharedMaterial = skin ? skin : paint;
+                r.gameObject.layer = IgnoreRaycastLayer;
+            }
+
+            var car = go.AddComponent<CarController>();
+            float resting = car.RestingSpringLength(ModelWheels.Length);
+            var mounts = new Vector3[ModelWheels.Length];
+            var radii = new float[ModelWheels.Length];
+            var pivots = new Transform[ModelWheels.Length];
+            var calipers = new Transform[ModelWheels.Length];
+            for (int i = 0; i < ModelWheels.Length; i++)
+            {
+                // The controller moves and steers a pivot at the hub; the mesh hangs under it as modelled.
+                var wheel = FindDeep(model, ModelWheels[i]);
+                var pivot = new GameObject("Wheel" + i).transform;
+                pivot.SetParent(go.transform, false);
+                pivot.localPosition = go.transform.InverseTransformPoint(wheel.position);
+                wheel.SetParent(pivot, true);
+                var e = wheel.GetComponent<Renderer>().bounds.extents;
+                radii[i] = Mathf.Max(e.y, e.z);
+                mounts[i] = pivot.localPosition + Vector3.up * resting;
+                pivots[i] = pivot;
+
+                calipers[i] = FindDeep(model, ModelCalipers[i]);
+                if (calipers[i]) calipers[i].SetParent(go.transform, true);
+            }
+
+            // Boost flames out of the turned-out side-pipe tips, just ahead of the rear wheels.
+            var flames = new Transform[2];
+            for (int s = 0; s < 2; s++)
+            {
+                float side = s == 0 ? 1f : -1f;
+                var dir = new Vector3(side * 0.914f, 0f, -0.406f);
+                var tip = new Vector3(side * 0.782f, 0.32f, -0.707f);
+                flames[s] = Part(go.transform, PrimitiveType.Cube, tip + dir * 0.18f, new Vector3(0.1f, 0.1f, 0.45f),
+                    Quaternion.LookRotation(dir).eulerAngles, a.boostFlame);
+            }
+
+            car.Init(mounts, pivots, radii);
+            go.AddComponent<BoostFlames>().Init(car, flames[0], flames[1]);
+            go.AddComponent<CarModelRig>().Init(car, pivots, calipers, FindDeep(model, "SteeringWheel"), FindDeep(model, "Driver"), FindDeep(model, "Engine"));
+            go.AddComponent<CarRecovery>();
+            return car;
+        }
+
+        /// <summary>
+        /// Stand-in made of primitives: low wedge chassis, exposed V8 with chrome intake,
+        /// roll cage, rear wing and big exposed wheels.
+        /// </summary>
+        static CarController FromPrimitives(GameObject go, Material paint, GameBootstrap a)
+        {
             // Physics shape: chassis plus roll cage, so roof landings hit something.
-            var body = go.AddComponent<BoxCollider>();
-            body.center = new Vector3(0f, 0.6f, 0f);
-            body.size = new Vector3(1.8f, 0.4f, 3.9f);
-            body.sharedMaterial = a.BodyPhysics;
-            var cage = go.AddComponent<BoxCollider>();
-            cage.center = new Vector3(0f, 1.05f, -0.4f);
-            cage.size = new Vector3(1.3f, 0.5f, 1.5f);
-            cage.sharedMaterial = a.BodyPhysics;
+            AddBox(go, new Vector3(0f, 0.6f, 0f), new Vector3(1.8f, 0.4f, 3.9f), a);
+            AddBox(go, new Vector3(0f, 1.05f, -0.4f), new Vector3(1.3f, 0.5f, 1.5f), a);
 
             var visual = new GameObject("Visual").transform;
             visual.SetParent(go.transform, false);
@@ -118,6 +210,78 @@ namespace StuntCar
             p.transform.localScale = scale;
             p.GetComponent<MeshRenderer>().sharedMaterial = m;
             return p.transform;
+        }
+    }
+
+    /// <summary>
+    /// Moving extras on the Blender car: brake calipers follow the wheels and steer without spinning,
+    /// the steering wheel turns with the front wheels, and the V8 rocks on its mounts.
+    /// </summary>
+    public class CarModelRig : MonoBehaviour
+    {
+        const float SteeringRatio = 3.5f;
+
+        CarController car;
+        Transform[] wheels, calipers;
+        Quaternion[] caliperRest;
+        Transform steeringWheel, engine;
+        Quaternion steeringRest, engineRest;
+        Vector3 steeringAxis, engineAxis;
+
+        public void Init(CarController c, Transform[] wheelPivots, Transform[] wheelCalipers, Transform wheel, Transform driver, Transform v8)
+        {
+            car = c;
+            wheels = wheelPivots;
+            calipers = wheelCalipers;
+            caliperRest = new Quaternion[calipers.Length];
+            for (int i = 0; i < calipers.Length; i++)
+                if (calipers[i]) caliperRest[i] = calipers[i].localRotation;
+
+            steeringWheel = wheel;
+            if (steeringWheel && driver)
+            {
+                steeringRest = steeringWheel.localRotation;
+                // The column is whichever local axis points most nearly at the driver's body.
+                Vector3 seat = driver.TryGetComponent<Renderer>(out var body) ? body.bounds.center : driver.position;
+                Vector3 d = steeringWheel.InverseTransformDirection(seat - steeringWheel.position);
+                Vector3 abs = new Vector3(Mathf.Abs(d.x), Mathf.Abs(d.y), Mathf.Abs(d.z));
+                if (abs.x >= abs.y && abs.x >= abs.z) steeringAxis = new Vector3(Mathf.Sign(d.x), 0f, 0f);
+                else if (abs.y >= abs.z) steeringAxis = new Vector3(0f, Mathf.Sign(d.y), 0f);
+                else steeringAxis = new Vector3(0f, 0f, Mathf.Sign(d.z));
+            }
+            else steeringWheel = null;
+
+            engine = v8;
+            if (engine)
+            {
+                engineRest = engine.localRotation;
+                engineAxis = engine.parent.InverseTransformDirection(c.transform.forward); // crank axis
+            }
+        }
+
+        // After CarController.Update has placed the wheel pivots.
+        void LateUpdate()
+        {
+            if (!car) return;
+            float steer = car.CurrentSteerAngle;
+            for (int i = 0; i < calipers.Length; i++)
+            {
+                if (!calipers[i]) continue;
+                bool front = wheels[i].localPosition.z > 0f;
+                calipers[i].localPosition = wheels[i].localPosition;
+                calipers[i].localRotation = Quaternion.Euler(0f, front ? steer : 0f, 0f) * caliperRest[i];
+            }
+
+            // Turning clockwise as the driver sees it is a positive angle about the axis pointing at them.
+            if (steeringWheel)
+                steeringWheel.localRotation = steeringRest * Quaternion.AngleAxis(steer * SteeringRatio, steeringAxis);
+
+            if (engine)
+            {
+                float rev = car.Wrecked ? 0f : 0.3f + car.Throttle * 0.7f;
+                float rock = (Mathf.PerlinNoise(Time.time * 28f, 0.5f) - 0.5f) * 1.6f * rev;
+                engine.localRotation = Quaternion.AngleAxis(rock, engineAxis) * engineRest;
+            }
         }
     }
 

@@ -10,13 +10,21 @@ a WebGL version with GitHub Actions ([GameCI](https://game.ci)) and publishes it
   Big Ramp (Div 3), Ski Jump and Draw Bridge (Div 2), High Jump and Roller Coaster (Div 1).
   Draw Bridge, Ski Jump and High Jump have gaps you have to jump; Roller Coaster is a figure
   of eight that crosses over itself.
+- **Modelled stunt car** (Blender, ~15k triangles): supercharged V8, zoomie side pipes, roll cage
+  and driver, in a yellow livery for you and a white/teal one for the rival
 - Raycast-suspension car with a tyre grip model, rear-wheel drive and limited **boost**
 - **Chassis damage** from hard landings and crashes; at 100% you're wrecked
-- **Crane recovery** when you fall off or end up on your roof (the time it takes is the penalty)
+- **Crane recovery** when you fall off or end up on your roof: a lifting platform carries the car
+  back to the road (the time it takes is the penalty)
+- A stadium built round each track: tall grandstands packed with fans close to the deck, with
+  roofs and floodlight masts
 - **League**: 4 divisions of 3 drivers, 4-race seasons, 2 points a win and 1 for the fastest lap,
   promotion and relegation; damage carries between races in a season. Saved in the browser.
 - Single race v CPU and practice modes
-- Keyboard, **gamepad** (Input System) and joystick-style steering wheels
+- Sloped red-and-white **kerbs** you can ride, with a painted edge line inside them
+- Keyboard, **gamepad** (Input System) and joystick-style steering wheels. Pads rumble on the
+  kerbs, clunk when you hit the other car and buzz gently while the tyres slide; in the WebGL
+  build that goes through the browser's Gamepad API (Chrome and Edge).
 - Tyre smoke, scrape sparks and landing dust
 - Chase camera and over-the-bonnet cockpit view
 - Synthesised V8 engine sound
@@ -47,6 +55,17 @@ settings. Then it builds WebGL. The game itself (track, cars, scenery) is genera
 You can also open the project in the Unity Editor (6000.3.27f1) and run
 **Stunt Car → Generate Project Assets**, then press Play on `Assets/Scenes/Main.unity`.
 
+### The car model
+
+`Assets/Models/StuntCar/StuntCar.fbx` is one model shared by both cars. Every face's UVs point
+at a flat-colour cell of a 256×256 palette, so a livery is just three textures in
+`Textures/` (albedo, metallic R + smoothness A, emission). `CarModelImport` sets their import
+options, `BuildScript` makes the `CarYellow` / `CarWhite` materials, and `CarFactory` reads
+the wheel positions and radii straight off the model's `Wheel_*` objects. To add a livery,
+copy and repaint the three PNGs and add a material for them. If the model is missing, cars fall back to
+the primitive stand-in. The Blender source and its build scripts are in `Art/StuntCar`;
+running its `rebuild_all.py` re-exports straight into `Assets/Models/StuntCar`.
+
 ## One-off setup
 
 1. **Unity licence** (free Personal). You need a `.ulf` licence file once:
@@ -69,7 +88,7 @@ You can also open the project in the Unity Editor (6000.3.27f1) and run
 1. Tune the handling against the original's feel
 2. Moving drawbridge on Draw Bridge
 3. Steering-wheel pedal mapping and a controls screen
-4. Real car and scenery models, recorded sound effects
+4. Real scenery models, recorded sound effects (the car model is in)
 5. Two-player split screen
 
 *Stunt Car Racer* is © its respective rights holders. This is a non-commercial fan project.

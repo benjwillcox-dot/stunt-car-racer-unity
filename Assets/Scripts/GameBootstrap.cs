@@ -28,9 +28,14 @@ namespace StuntCar
         public Material tailLight;
         public Material particleSmoke;
         public Material particleSpark;
+        // The Blender car and its two palette liveries. Cars fall back to primitives without them.
+        public GameObject carModel;
+        public Material playerCarSkin;
+        public Material opponentCarSkin;
 
         public static GameBootstrap Instance { get; private set; }
         public Material AsphaltRuntime { get; private set; }
+        public Material CrowdRuntime { get; private set; }
         public PhysicsMaterial RoadPhysics { get; private set; }
         public PhysicsMaterial BodyPhysics { get; private set; }
 
@@ -45,6 +50,14 @@ namespace StuntCar
 
             AsphaltRuntime = new Material(asphalt) { name = "Asphalt (runtime)" };
             AsphaltRuntime.SetTexture("_BaseMap", ProceduralTextures.Asphalt());
+
+            // The seat material, untinted, with the crowd painted on.
+            CrowdRuntime = new Material(standSeats) { name = "Crowd (runtime)" };
+            CrowdRuntime.SetTexture("_BaseMap", ProceduralTextures.Crowd());
+            CrowdRuntime.SetTexture("_MainTex", CrowdRuntime.GetTexture("_BaseMap"));
+            CrowdRuntime.SetColor("_BaseColor", Color.white);
+            CrowdRuntime.SetColor("_Color", Color.white);
+            CrowdRuntime.SetFloat("_Smoothness", 0.1f);
 
             var grassTex = ProceduralTextures.Grass();
             grass.SetTexture("_BaseMap", grassTex);
