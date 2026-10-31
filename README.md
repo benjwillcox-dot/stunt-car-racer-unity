@@ -14,7 +14,10 @@ a WebGL version with GitHub Actions ([GameCI](https://game.ci)) and publishes it
   and driver, in a yellow livery for you and a white/teal one for the rival
 - Raycast-suspension car with a tyre grip model, rear-wheel drive and limited **boost**
 - **Chassis damage** from hard landings and crashes; at 100% you're wrecked
-- **Crane recovery** when you fall off or end up on your roof (the time it takes is the penalty)
+- **Crane recovery** when you fall off or end up on your roof: a lifting platform carries the car
+  back to the road (the time it takes is the penalty)
+- A stadium built round each track: tall grandstands packed with fans close to the deck, with
+  roofs and floodlight masts
 - **League**: 4 divisions of 3 drivers, 4-race seasons, 2 points a win and 1 for the fastest lap,
   promotion and relegation; damage carries between races in a season. Saved in the browser.
 - Single race v CPU and practice modes

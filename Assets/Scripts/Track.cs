@@ -107,6 +107,7 @@ namespace StuntCar
             ComputeAiSpeeds();
             BuildRoad(assets);
             BuildScaffolding(assets);
+            Scenery.BuildStadium(this, assets);
         }
 
         static Vector3 CatmullRom(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, float t)
