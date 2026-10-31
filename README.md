@@ -57,7 +57,8 @@ at a flat-colour cell of a 256×256 palette, so a livery is just three textures 
 options, `BuildScript` makes the `CarYellow` / `CarWhite` materials, and `CarFactory` reads
 the wheel positions and radii straight off the model's `Wheel_*` objects. To add a livery,
 copy and repaint the three PNGs and add a material for them. If the model is missing, cars fall back to
-the primitive stand-in.
+the primitive stand-in. The Blender source and its build scripts are in `Art/StuntCar`;
+running its `rebuild_all.py` re-exports straight into `Assets/Models/StuntCar`.
 
 ## One-off setup
 
