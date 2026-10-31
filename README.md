@@ -18,7 +18,10 @@ a WebGL version with GitHub Actions ([GameCI](https://game.ci)) and publishes it
 - **League**: 4 divisions of 3 drivers, 4-race seasons, 2 points a win and 1 for the fastest lap,
   promotion and relegation; damage carries between races in a season. Saved in the browser.
 - Single race v CPU and practice modes
-- Keyboard, **gamepad** (Input System) and joystick-style steering wheels
+- Sloped red-and-white **kerbs** you can ride, with a painted edge line inside them
+- Keyboard, **gamepad** (Input System) and joystick-style steering wheels. Pads rumble on the
+  kerbs, clunk when you hit the other car and buzz gently while the tyres slide; in the WebGL
+  build that goes through the browser's Gamepad API (Chrome and Edge).
 - Tyre smoke, scrape sparks and landing dust
 - Chase camera and over-the-bonnet cockpit view
 - Synthesised V8 engine sound

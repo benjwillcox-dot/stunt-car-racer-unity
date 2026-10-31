@@ -2,16 +2,39 @@ using UnityEngine;
 
 namespace StuntCar
 {
-    /// <summary>Feeds keyboard / gamepad / wheel input (see <see cref="GameInput"/>) to the car.</summary>
+    /// <summary>
+    /// Feeds keyboard / gamepad / wheel input (see <see cref="GameInput"/>) to the car, and
+    /// rumbles the pad on the kerbs, when you hit the other car and when the tyres slide.
+    /// </summary>
     public class PlayerDriver : MonoBehaviour
     {
+        const float SlipStart = 3.5f, SlipFull = 12f;   // wheel slip (m/s); smoke starts at 3.5 too
+
         CarController car;
         RaceCar raceCar;
+        int kerbWheels;
+        float knock, clunk, clunkLength, clunkStrength;
 
         void Awake()
         {
             car = GetComponent<CarController>();
             raceCar = GetComponent<RaceCar>();
+            car.HitCar += OnHitCar;
+        }
+
+        void OnDestroy()
+        {
+            if (car) car.HitCar -= OnHitCar;
+        }
+
+        // A short clunk from the heavy motor, harder and longer the faster the cars met.
+        void OnHitCar(float speed)
+        {
+            float s = Mathf.InverseLerp(1f, 12f, speed);
+            float strength = 0.45f + 0.55f * s;
+            if (s <= 0f || (clunk > 0f && strength < clunkStrength * clunk / clunkLength)) return;
+            clunkStrength = strength;
+            clunk = clunkLength = 0.1f + 0.15f * s;
         }
 
         void Update()
@@ -22,7 +45,52 @@ namespace StuntCar
             car.Brake = brake;
             car.Boost = boost;
             if (GameInput.CranePressed() && raceCar) raceCar.RequestRecovery();
+            Rumble();
         }
+
+        // Each motor runs at whichever of these wants it most:
+        // - kerbs: a buzz, stronger with speed and with both wheels on, plus a knock from the
+        //   heavy motor each time another wheel climbs on
+        // - hitting the other car: the clunk, fading out
+        // - tyres sliding, spinning or locked: a gentle buzz from the light motor
+        void Rumble()
+        {
+            float dt = Time.deltaTime;
+            int onKerb = 0;
+            float slip = 0f;
+            if (car.Body && !car.Body.isKinematic)
+            {
+                for (int i = 0; i < car.WheelCount; i++)
+                {
+                    if (car.WheelOnKerb(i)) onKerb++;
+                    if (car.WheelGrounded(i)) slip = Mathf.Max(slip, car.WheelSlip(i));
+                }
+            }
+            if (onKerb > kerbWheels) knock = 0.09f;
+            kerbWheels = onKerb;
+            knock = Mathf.Max(0f, knock - dt);
+            clunk = Mathf.Max(0f, clunk - dt);
+
+            float low = 0f, high = 0f;
+            float pace = Mathf.InverseLerp(2f, 35f, Mathf.Abs(car.Speed));
+            if (onKerb > 0 && pace > 0f)
+            {
+                float amount = (0.3f + 0.7f * pace) * (onKerb >= 2 ? 1f : 0.6f);
+                low = amount * 0.35f + (knock > 0f ? 0.5f * pace : 0f);
+                high = amount * 0.8f;
+            }
+            float slide = Mathf.InverseLerp(SlipStart, SlipFull, slip);
+            if (slide > 0f) high = Mathf.Max(high, 0.08f + 0.17f * slide);
+            if (clunk > 0f)
+            {
+                float fade = clunk / clunkLength;
+                low = Mathf.Max(low, clunkStrength * fade);
+                high = Mathf.Max(high, clunkStrength * 0.4f * fade);
+            }
+            GameInput.SetRumble(low, high);
+        }
+
+        void OnDisable() => GameInput.StopRumble();
     }
 
     /// <summary>

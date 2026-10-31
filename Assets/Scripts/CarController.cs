@@ -73,12 +73,15 @@ namespace StuntCar
         public event System.Action<Vector3, float> Impact;
         /// <summary>Body sliding along something: contact point and sliding speed, for sparks.</summary>
         public event System.Action<Vector3, float> Scrape;
+        /// <summary>Ran into another car: closing speed, for the pad's clunk.</summary>
+        public event System.Action<float> HitCar;
 
         public int WheelCount => wheels == null ? 0 : wheels.Length;
         public bool WheelGrounded(int i) => wheels[i].grounded;
         public Vector3 WheelContact(int i) => wheels[i].contact;
         public float WheelSlip(int i) => wheels[i].slip;
         public bool WheelDriven(int i) => wheels[i].driven;
+        public bool WheelOnKerb(int i) => wheels[i].onKerb;
 
         class Wheel
         {
@@ -90,6 +93,7 @@ namespace StuntCar
             public float springLength;
             public float spin;
             public bool grounded;
+            public bool onKerb;
             public Vector3 contact;
             public float slip;      // sideways sliding speed plus wheelspin, m/s
         }
@@ -200,6 +204,7 @@ namespace StuntCar
                 if (!Physics.Raycast(origin, -up, out RaycastHit hit, maxDist, rayMask, QueryTriggerInteraction.Ignore))
                 {
                     w.grounded = false;
+                    w.onKerb = false;
                     w.lastCompression = 0f;
                     w.springLength = Mathf.MoveTowards(w.springLength, restLength, dt * 2f);
                     continue;
@@ -207,6 +212,7 @@ namespace StuntCar
 
                 grounded++;
                 w.grounded = true;
+                w.onKerb = hit.collider.TryGetComponent(out KerbSurface _);
                 w.springLength = Mathf.Max(0f, hit.distance - w.radius);
                 float compression = 1f - w.springLength / restLength;            // 0 = extended, 1 = fully compressed
                 // Rate the mount is closing on the (static) road. Using velocity rather than the change in
@@ -310,6 +316,7 @@ namespace StuntCar
             float impact = Mathf.Abs(Vector3.Dot(c.relativeVelocity, contact.normal));
             if (impact > 3f) Impact?.Invoke(contact.point, impact);
             bool otherCar = c.rigidbody != null;
+            if (otherCar) HitCar?.Invoke(impact);
             float threshold = otherCar ? impactDamageThreshold * 1.6f : impactDamageThreshold;
             if (impact > threshold) AddDamage((impact - threshold) * impactDamageScale);
         }
