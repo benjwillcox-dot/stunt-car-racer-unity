@@ -6,12 +6,18 @@ a WebGL version with GitHub Actions ([GameCI](https://game.ci)) and publishes it
 
 ## What's in it
 
-- **12 road courses**, laid out from their corners (`TrackCourse.cs`) with bends both ways,
-  chicanes and hairpin spurs, some banked into the turn and some off camber. The 8 league tracks
-  (0.95–1.2 km), paired by division: Little Ramp and Hump Back (Div 4), Stepping Stones and Big
-  Ramp (Div 3), Ski Jump and Draw Bridge (Div 2), High Jump and Roller Coaster (Div 1). Plus 4
-  long courses (1.6–1.8 km, single race and practice): Camel Back, Big Dipper (a figure of eight
-  with steep 25° hills), Leap Frog and Swing Bridge.
+- **12 road courses ridden like roller coasters**, laid out from their corners
+  (`TrackCourse.cs`) with bends both ways, chicanes and hairpin spurs:
+  - a steady climb, often round banked bends, to a crest and a big drop of 10–28 m at up to 31°;
+  - bends banked 10–24° into the turn, a few off camber, with the banking eased in and out;
+  - straights whose camber rocks from side to side;
+  - higher divisions climb higher.
+
+  The 8 league tracks (1.0–1.2 km), paired by division: Little Ramp and Hump Back (Div 4),
+  Stepping Stones and Big Ramp (Div 3), Ski Jump and Draw Bridge (Div 2), High Jump and Roller
+  Coaster (Div 1). Plus 4 long courses (1.6–1.8 km, single race and practice): Camel Back, Big
+  Dipper (a figure of eight climbing to 36 m over the crossing), Leap Frog and Swing Bridge.
+  Blender views of every track are in `Art/Tracks`.
 - Gaps to jump, rows of **kickers** to pace (up to about 30 m/s you land in the flat; faster and
   you hit the next ramp as it rises), and a moving **drawbridge** on Draw Bridge and Swing
   Bridge: down you drive over, part way up it's a ramp, high up it throws you a long way. Its
@@ -54,8 +60,9 @@ a WebGL version with GitHub Actions ([GameCI](https://game.ci)) and publishes it
 `preview/index.html` is a Three.js port of the same game (same track points, physics numbers,
 AI and league rules) that runs in any browser without a Unity build. Use it to try handling
 changes quickly; tuning values carry straight back to `Assets/Scripts`. Its track list is
-generated from `TrackLibrary.cs`'s output, so the layouts match; its drawbridges stay down, and
-it has none of the stadium, night or infield dressing.
+written by the track exporter (`dotnet run --project Art/Tracks/exporter`, see
+`Art/Tracks/README.md`) from `TrackLibrary.cs`, so the layouts match; its drawbridges stay down,
+and it has none of the stadium, night or infield dressing.
 
 ## Controls
 

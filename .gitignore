@@ -39,3 +39,7 @@ Thumbs.db
 # Blender
 *.blend1
 __pycache__/
+
+# Track exporter build output
+Art/Tracks/exporter/bin/
+Art/Tracks/exporter/obj/

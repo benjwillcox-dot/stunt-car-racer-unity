@@ -8,24 +8,37 @@ namespace StuntCar
     ///
     /// Corners are listed in driving order round a closed loop. Each is rounded into an arc of its
     /// radius and banked by its bank angle: positive leans into the bend (on camber), negative leans
-    /// out of it (off camber). The deck is at the corner's height at the middle of the bend and
-    /// climbs or falls steadily, by distance, to the next one, through any Height() set on the
-    /// straight between. Features go on the straight after the most recent corner, at "at" metres
-    /// from that corner: humps, hills, ramps, rows of kickers, gaps to jump and drawbridges. So
-    /// does the start line.
+    /// out of it (off camber). The banking eases in on the approach, holds through the bend and
+    /// eases out after it, over a run-off that grows with the angle.
+    ///
+    /// The deck height is fixed at each bend's apex (unless the corner is <see cref="Free"/>) and at
+    /// Height() marks. Between them it climbs or falls steadily, by distance round the loop, through
+    /// any free corners, and it rounds off over up to 40 m wherever the grade changes, so climbs,
+    /// crests and dips feel like a roller coaster's.
+    ///
+    /// Features go on the straight after the most recent corner, at "at" metres from that corner:
+    /// climbs, drops, camber rolls, humps, hills, ramps, rows of kickers, gaps to jump and
+    /// drawbridges. So does the start line.
     /// </summary>
     public class Course
     {
-        const float FillerSpacing = 26f;  // points along plain straights
+        /// <summary>A corner height that isn't fixed: the deck carries on through the bend.</summary>
+        public const float Free = float.NaN;
+
+        const float FillerSpacing = 15f;  // points along plain straights
         const float ArcStep = 14f;        // degrees of bend per point
         const float MinSpacing = 3f;      // points closer than this are dropped (feature points win)
+        const float MaxRounding = 20f;    // either side of a change of grade
+        const float Gravity = 9.81f;
 
         struct CornerSpec { public Vector2 at; public float radius, height, bank; }
 
         struct Mark
         {
-            public float s, dh, hint, min, height;
-            public bool gap, drawbridge, level, start, keep;   // keep: a Height() mark, fixing the deck at 'height'
+            public float s, dh, hint, min, height, roll;
+            public bool gap, drawbridge, level, start;
+            public bool keep;     // fixes the deck at 'height'
+            public bool pinned;   // never dropped for being close to another point
         }
 
         class Straight
@@ -42,28 +55,82 @@ namespace StuntCar
 
         Straight Current => straights[straights.Count - 1];
 
-        /// <summary>A corner at (x, z), rounded to <paramref name="radius"/>, at deck height <paramref name="height"/>.</summary>
-        public Course Corner(float x, float z, float radius, float height, float bank = 9f)
+        /// <summary>
+        /// A corner at (x, z), rounded to <paramref name="radius"/>, at deck height
+        /// <paramref name="height"/> (or <see cref="Free"/>), banked <paramref name="bank"/> degrees.
+        /// </summary>
+        public Course Corner(float x, float z, float radius, float height, float bank = 12f)
         {
             corners.Add(new CornerSpec { at = new Vector2(x, z), radius = radius, height = height, bank = bank });
             straights.Add(new Straight());
             return this;
         }
 
-        /// <summary>
-        /// The deck height <paramref name="at"/> metres along the straight. Between these (and the
-        /// corners) it climbs or falls steadily, so two of them make a plunge or a steep climb.
-        /// </summary>
-        public Course Height(float at, float height)
+        /// <summary>The deck height <paramref name="at"/> metres along the straight.</summary>
+        public Course Height(float at, float height, float hint = 999f)
         {
-            Current.marks.Add(new Mark { s = at, hint = 999f, keep = true, height = height });
+            Current.marks.Add(new Mark { s = at, hint = hint, keep = true, pinned = true, height = height });
             return this;
         }
 
         /// <summary>The start line, on the straight after the last corner.</summary>
         public Course Start(float at)
         {
-            Current.marks.Add(new Mark { s = at, hint = 999f, start = true });
+            Current.marks.Add(new Mark { s = at, hint = 999f, start = true, pinned = true });
+            return this;
+        }
+
+        /// <summary>
+        /// A steady climb (or descent) from <paramref name="from"/> to <paramref name="to"/> metres
+        /// high over <paramref name="length"/> metres. To carry a climb on round bends, make them
+        /// <see cref="Free"/> and fix the height where it tops out instead.
+        /// </summary>
+        public Course Climb(float at, float length, float from, float to) => Height(at, from).Height(at + length, to);
+
+        /// <summary>
+        /// The big drop, like a roller coaster's first: over a crest rounded to
+        /// <paramref name="crest"/> metres, down a plunge as steep as <paramref name="angle"/>
+        /// degrees from <paramref name="top"/> to <paramref name="bottom"/> metres high, and out along
+        /// a pull-out rounded to <paramref name="pullOut"/> metres. The AI eases over the crest so it
+        /// stays on the road; take it faster and you fly the drop.
+        /// </summary>
+        public Course Drop(float at, float top, float bottom, float angle = 26f, float crest = 50f, float pullOut = 90f)
+        {
+            float fall = top - bottom;
+            float a = angle * Mathf.Deg2Rad;
+            // Not tall enough for the full angle: the two curves meet at a shallower one.
+            if ((crest + pullOut) * (1f - Mathf.Cos(a)) > fall) a = Mathf.Acos(1f - fall / (crest + pullOut));
+            float crestLen = crest * Mathf.Sin(a), outLen = pullOut * Mathf.Sin(a);
+            float plunge = (fall - (crest + pullOut) * (1f - Mathf.Cos(a))) / Mathf.Tan(a);
+            float length = crestLen + plunge + outLen;
+            float hint = 0.9f * Mathf.Sqrt(Gravity * crest);   // keeps a fifth of the car's weight on the tyres
+            int steps = Mathf.Max(4, Mathf.CeilToInt(length / 5f));
+            for (int k = 0; k <= steps; k++)
+            {
+                float x = length * k / steps, y;
+                if (x <= crestLen) y = top - (crest - Mathf.Sqrt(crest * crest - x * x));
+                else if (x <= crestLen + plunge) y = top - crest * (1f - Mathf.Cos(a)) - (x - crestLen) * Mathf.Tan(a);
+                else { float u = length - x; y = bottom + (pullOut - Mathf.Sqrt(pullOut * pullOut - u * u)); }
+                Height(at + x, y, x <= crestLen ? hint : 999f);
+            }
+            Current.spans.Add(new Vector2(at, at + length));
+            return this;
+        }
+
+        /// <summary>
+        /// Camber that rocks from side to side along a straight: <paramref name="waves"/> times
+        /// over <paramref name="length"/> metres, leaning up to <paramref name="angle"/> degrees each
+        /// way, starting with the right-hand edge up.
+        /// </summary>
+        public Course Roll(float at, float length, float angle, int waves = 1)
+        {
+            int quarters = waves * 4;
+            for (int q = 0; q <= quarters; q++)
+            {
+                float roll = q % 4 == 1 ? angle : q % 4 == 3 ? -angle : 0f;
+                Current.marks.Add(new Mark { s = at + length * q / quarters, hint = 999f, roll = roll, pinned = true });
+            }
+            Current.spans.Add(new Vector2(at, at + length));
             return this;
         }
 
@@ -143,9 +210,27 @@ namespace StuntCar
         void Add(float s, float dh, float hint, float min = 0f) =>
             Current.marks.Add(new Mark { s = s, dh = dh, hint = hint, min = min });
 
+        // A point that shapes the road, so it stays however close it is to the next.
+        static bool Needed(Mark m) => m.pinned || m.gap || m.drawbridge || m.level || m.dh != 0f || m.hint < 999f || m.min > 0f;
+
+        static Mark Merge(Mark a, Mark b)
+        {
+            if (a.dh == 0f) a.dh = b.dh;
+            if (a.roll == 0f) a.roll = b.roll;
+            if (b.keep) { a.keep = true; a.height = b.height; }
+            a.hint = Mathf.Min(a.hint, b.hint);
+            a.min = Mathf.Max(a.min, b.min);
+            a.gap |= b.gap; a.drawbridge |= b.drawbridge; a.level |= b.level; a.start |= b.start;
+            a.pinned = true;
+            return a;
+        }
+
         static Vector2 Flat(TrackPoint p) => new Vector2(p.Position.x, p.Position.z);
 
         static Vector2 Rotate(Vector2 v, float a) => new Vector2(v.x * Mathf.Cos(a) - v.y * Mathf.Sin(a), v.x * Mathf.Sin(a) + v.y * Mathf.Cos(a));
+
+        // How far the banking takes to ease in or out: longer for steeper banks.
+        static float RunOff(float bank) => Mathf.Clamp(Mathf.Abs(bank) * 1.5f, 10f, 30f);
 
         /// <summary>The track points, starting from the start line.</summary>
         public List<TrackPoint> Points()
@@ -165,30 +250,33 @@ namespace StuntCar
             }
 
             // First pass: the points round the loop. Their y is left as the offset from the deck
-            // height; the deck height itself is fixed at each bend's apex and at Height() marks.
+            // height; the deck height itself is fixed at bends' apexes and at Height() marks.
             var points = new List<TrackPoint>();
             var fixedHeight = new List<float>();   // NaN where the deck height isn't set
             var levelGroup = new List<int>();      // which level feature a point is part of, or -1
+            var roll = new List<float>();          // camber rolls along the straights
+            var arcFirst = new int[n]; var arcLast = new int[n];
             int startIndex = 0, levels = 0;
             for (int i = 0; i < n; i++)
             {
                 var c = corners[i];
                 int j = (i + 1) % n;
 
-                // Round the bend, banked; half the bank where it meets the straights.
+                // Round the bend (its banking is worked out once the whole loop is laid out).
                 float sweep = Mathf.Abs(turn[i]) * Mathf.Rad2Deg;
                 int steps = Mathf.Max(2, Mathf.CeilToInt(sweep / ArcStep));
-                float bank = c.bank * Mathf.Sign(turn[i]);
                 // Where the straight into this bend is too short to matter, its end is our start.
                 bool shortIn = Vector2.Distance(arcEnd[(i - 1 + n) % n], arcStart[i]) < MinSpacing;
+                arcFirst[i] = points.Count;
                 for (int k = shortIn && i > 0 ? 1 : 0; k <= steps; k++)
                 {
                     Vector2 p = centre[i] + Rotate(arcStart[i] - centre[i], turn[i] * k / steps);
-                    float b = k == 0 || k == steps ? bank * 0.5f : bank;
-                    points.Add(new TrackPoint(p.x, 0f, p.y, b));
+                    points.Add(new TrackPoint(p.x, 0f, p.y));
                     fixedHeight.Add(k == steps / 2 ? c.height : float.NaN);
                     levelGroup.Add(-1);
+                    roll.Add(0f);
                 }
+                arcLast[i] = points.Count - 1;
 
                 // The straight to the next corner.
                 Vector2 from = arcEnd[i], to = arcStart[j];
@@ -197,7 +285,8 @@ namespace StuntCar
                     throw new System.InvalidOperationException($"{name}: corners {i} and {j} are too close for their radii");
                 Vector2 dir = (to - from).normalized;
 
-                // Feature marks (measured from the corner) plus filler points outside their spans.
+                // Feature marks (measured from the corner), plus filler points and points where the
+                // banking eases in and out, outside the features' spans.
                 var marks = new List<Mark>();
                 foreach (var m in straights[i].marks)
                 {
@@ -207,23 +296,41 @@ namespace StuntCar
                         throw new System.InvalidOperationException($"{name}: a feature after corner {i} doesn't fit on its straight ({m.s:0} m, straight runs {tangent[i]:0}-{tangent[i] + length:0} m)");
                     marks.Add(mm);
                 }
+                bool Clear(float s)
+                {
+                    if (s < 1f || s > length - 1f) return false;
+                    foreach (var span in straights[i].spans)
+                        if (s > span.x - tangent[i] - 8f && s < span.y - tangent[i] + 8f) return false;
+                    return true;
+                }
                 int fillers = Mathf.FloorToInt(length / FillerSpacing);
                 for (int f = 1; f <= fillers; f++)
                 {
                     float s = f * length / (fillers + 1);
-                    bool inSpan = false;
-                    foreach (var span in straights[i].spans)
-                        if (s > span.x - tangent[i] - 8f && s < span.y - tangent[i] + 8f) { inSpan = true; break; }
-                    if (!inSpan) marks.Add(new Mark { s = s, hint = 999f });
+                    if (Clear(s)) marks.Add(new Mark { s = s, hint = 999f });
                 }
+                float outOf = RunOff(c.bank), into = RunOff(corners[j].bank);
+                foreach (float s in new[] { outOf * 0.5f, outOf, length - into, length - into * 0.5f })
+                    if (Clear(s) && s > 0f && s < length) marks.Add(new Mark { s = s, hint = 999f });
                 marks.Sort((a, b) => a.s.CompareTo(b.s));
+                // Points from two features that land on top of each other (a roll along a climb)
+                // become one.
+                var merged = new List<Mark>();
+                foreach (var mk in marks)
+                {
+                    int prev = merged.Count - 1;
+                    if (prev >= 0 && mk.s - merged[prev].s < 1.5f && Needed(mk) && Needed(merged[prev])) merged[prev] = Merge(merged[prev], mk);
+                    else merged.Add(mk);
+                }
+                // Filler and easing points give way to the ones that shape the road.
+                marks = merged.FindAll(mk => Needed(mk) || !merged.Exists(o => Needed(o) && Mathf.Abs(o.s - mk.s) < MinSpacing));
 
                 bool inLevel = false;
                 float lastS = 0f;
                 for (int m = 0; m < marks.Count; m++)
                 {
                     var mk = marks[m];
-                    bool keep = mk.keep || mk.start || mk.gap || mk.drawbridge || mk.level || mk.dh != 0f || mk.hint < 999f || mk.min > 0f;
+                    bool keep = Needed(mk);
                     if (!keep && (mk.s - lastS < MinSpacing || length - mk.s < MinSpacing)) continue;
                     if (mk.level && !inLevel) { levels++; inLevel = true; }
                     else if (!mk.level) inLevel = false;
@@ -232,6 +339,7 @@ namespace StuntCar
                     points.Add(new TrackPoint(p.x, mk.dh, p.y, 0f, mk.hint, mk.min, mk.gap, mk.drawbridge));
                     fixedHeight.Add(mk.keep ? mk.height : float.NaN);
                     levelGroup.Add(mk.level ? levels : -1);
+                    roll.Add(mk.roll);
                     lastS = mk.s;
                 }
             }
@@ -240,29 +348,22 @@ namespace StuntCar
             int last = points.Count - 1;
             if (last > 0 && Vector2.Distance(Flat(points[last]), Flat(points[0])) < MinSpacing)
             {
-                points.RemoveAt(last); fixedHeight.RemoveAt(last); levelGroup.RemoveAt(last);
+                points.RemoveAt(last); fixedHeight.RemoveAt(last); levelGroup.RemoveAt(last); roll.RemoveAt(last);
                 if (startIndex >= points.Count) startIndex = 0;
+                for (int i = 0; i < n; i++) arcLast[i] = Mathf.Min(arcLast[i], points.Count - 1);
             }
 
-            // Second pass: the deck height runs steadily between the fixed heights, by distance
-            // round the loop, so a climb is spread over the bends as well as the straights. A level
-            // feature holds the height it starts at.
+            // Second pass: distances round the loop, then the deck heights and the banking.
             int count = points.Count;
             var dist = new float[count];
             for (int i = 1; i < count; i++) dist[i] = dist[i - 1] + Vector2.Distance(Flat(points[i - 1]), Flat(points[i]));
             float lap = dist[count - 1] + Vector2.Distance(Flat(points[count - 1]), Flat(points[0]));
             var knots = new List<int>();
             for (int i = 0; i < count; i++) if (!float.IsNaN(fixedHeight[i])) knots.Add(i);
-            var deck = new float[count];
-            for (int i = 0; i < count; i++)
-            {
-                int after = knots.FindIndex(k => k >= i);
-                int b = after < 0 ? knots[0] : knots[after];
-                int a = after < 0 ? knots[knots.Count - 1] : (knots[after] == i ? i : knots[(after - 1 + knots.Count) % knots.Count]);
-                float da = dist[a] > dist[i] ? dist[a] - lap : dist[a];
-                float db = dist[b] < dist[i] ? dist[b] + lap : dist[b];
-                deck[i] = a == b ? fixedHeight[a] : Mathf.Lerp(fixedHeight[a], fixedHeight[b], (dist[i] - da) / Mathf.Max(db - da, 0.01f));
-            }
+            if (knots.Count == 0) throw new System.InvalidOperationException($"{name}: nothing fixes the deck height");
+            float[] deck = DeckHeights(dist, lap, knots, fixedHeight);
+            float[] bank = Banking(dist, lap, arcFirst, arcLast, turn);
+
             var groupHeight = new Dictionary<int, float>();
             var result = new List<TrackPoint>(count);
             for (int i = 0; i < count; i++)
@@ -275,6 +376,7 @@ namespace StuntCar
                     y = held;
                 }
                 p.Position.y = y + p.Position.y;
+                p.Bank = bank[i] + roll[i];
                 result.Add(p);
             }
 
@@ -282,6 +384,78 @@ namespace StuntCar
             var ordered = new List<TrackPoint>(count);
             for (int i = 0; i < count; i++) ordered.Add(result[(startIndex + i) % count]);
             return ordered;
+        }
+
+        // The deck height at every point: straight lines between the fixed heights, by distance
+        // round the loop, with each change of grade rounded into a curve tangent to both lines over
+        // up to MaxRounding either side (never more than half the way to the next fixed height).
+        static float[] DeckHeights(float[] dist, float lap, List<int> knots, List<float> fixedHeight)
+        {
+            int m = knots.Count, count = dist.Length;
+            var deck = new float[count];
+            if (m == 1)
+            {
+                for (int i = 0; i < count; i++) deck[i] = fixedHeight[knots[0]];
+                return deck;
+            }
+            var s = new float[m]; var y = new float[m]; var h = new float[m]; var grade = new float[m]; var round = new float[m];
+            for (int k = 0; k < m; k++) { s[k] = dist[knots[k]]; y[k] = fixedHeight[knots[k]]; }
+            for (int k = 0; k < m; k++)
+            {
+                int k1 = (k + 1) % m;
+                h[k] = Mathf.Max((k1 == 0 ? s[0] + lap : s[k1]) - s[k], 0.01f);
+                grade[k] = (y[k1] - y[k]) / h[k];
+            }
+            for (int k = 0; k < m; k++) round[k] = Mathf.Min(MaxRounding, 0.5f * h[(k - 1 + m) % m], 0.5f * h[k]);
+
+            // Near knot k (x metres past it, negative before), on the curve rounding its corner.
+            float Rounded(int k, float x)
+            {
+                float r = round[k], gIn = grade[(k - 1 + m) % m];
+                return y[k] + gIn * x + (grade[k] - gIn) * (x + r) * (x + r) / (4f * r);
+            }
+
+            int last = -1;   // the last knot at or before this point; before the first, the last one round the loop
+            for (int i = 0; i < count; i++)
+            {
+                while (last + 1 < m && s[last + 1] <= dist[i]) last++;
+                int k0 = last < 0 ? m - 1 : last, k1 = (k0 + 1) % m;
+                float x = dist[i] - s[k0];
+                if (x < 0f) x += lap;
+                if (x < round[k0]) deck[i] = Rounded(k0, x);
+                else if (h[k0] - x < round[k1]) deck[i] = Rounded(k1, x - h[k0]);
+                else deck[i] = y[k0] + grade[k0] * x;
+            }
+            return deck;
+        }
+
+        // The corners' banking at every point: full through each bend, easing in and out over its
+        // run-off. Banks that overlap add, but never past the steepest of them, so an S-bend rolls
+        // straight from one lean to the other.
+        float[] Banking(float[] dist, float lap, int[] arcFirst, int[] arcLast, float[] turn)
+        {
+            int count = dist.Length, n = corners.Count;
+            var bank = new float[count];
+            for (int i = 0; i < count; i++)
+            {
+                float pos = 0f, neg = 0f, posMax = 0f, negMin = 0f;
+                for (int c = 0; c < n; c++)
+                {
+                    float b = corners[c].bank * Mathf.Sign(turn[c]);
+                    if (b == 0f) continue;
+                    float s0 = dist[arcFirst[c]], s1 = dist[arcLast[c]];
+                    float half = (s1 - s0) * 0.5f, hold = Mathf.Min(0.3f * (s1 - s0), 8f), runOff = RunOff(b);
+                    float delta = Mathf.Repeat(dist[i] - (s0 + s1) * 0.5f + lap * 0.5f, lap) - lap * 0.5f;
+                    float a = Mathf.Abs(delta), w;
+                    if (a <= half - hold) w = 1f;
+                    else if (a >= half + runOff) continue;
+                    else w = Mathf.SmoothStep(0f, 1f, 1f - (a - (half - hold)) / (runOff + hold));
+                    if (b > 0f) { pos += b * w; posMax = Mathf.Max(posMax, b); }
+                    else { neg += b * w; negMin = Mathf.Min(negMin, b); }
+                }
+                bank[i] = Mathf.Min(pos, posMax) + Mathf.Max(neg, negMin);
+            }
+            return bank;
         }
     }
 }

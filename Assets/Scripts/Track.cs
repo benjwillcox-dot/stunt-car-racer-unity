@@ -152,6 +152,15 @@ namespace StuntCar
             return 0.5f * ((2f * p1) + (-p0 + p2) * t + (2f * p0 - 5f * p1 + 4f * p2 - p3) * t2 + (-p0 + 3f * p1 - 3f * p2 + p3) * t3);
         }
 
+        // Banking between two points: a smooth curve through the neighbours too, so the deck rolls
+        // steadily, but kept between this pair's angles so it never leans further than either.
+        static float BankAt(float b0, float b1, float b2, float b3, float t)
+        {
+            float t2 = t * t, t3 = t2 * t;
+            float b = 0.5f * ((2f * b1) + (-b0 + b2) * t + (2f * b0 - 5f * b1 + 4f * b2 - b3) * t2 + (-b0 + 3f * b1 - 3f * b2 + b3) * t3);
+            return Mathf.Clamp(b, Mathf.Min(b1, b2), Mathf.Max(b1, b2));
+        }
+
         void SampleSpline(TrackDefinition def)
         {
             var pts = def.Points;
@@ -171,9 +180,8 @@ namespace StuntCar
                 for (int s = 0; s < steps; s++)
                 {
                     float t = s / (float)steps;
-                    float st = Mathf.SmoothStep(0f, 1f, t);
                     cs.Add(CatmullRom(p0.Position, p1.Position, p2.Position, p3.Position, t));
-                    banks.Add(Mathf.Lerp(p1.Bank, p2.Bank, st));
+                    banks.Add(BankAt(p0.Bank, p1.Bank, p2.Bank, p3.Bank, t));
                     hints.Add(Mathf.Min(p1.SpeedHint, p2.SpeedHint));
                     mins.Add(p1.MinSpeed);
                     gapList.Add(p1.Gap);
@@ -198,7 +206,9 @@ namespace StuntCar
                 Vector3 fwd = (centers[(i + 1) % count] - centers[(i - 1 + count) % count]).normalized;
                 Vector3 right = Vector3.Cross(Vector3.up, fwd).normalized;
                 Vector3 up = Vector3.Cross(fwd, right);
-                up = Quaternion.AngleAxis(-banks[i], fwd) * up;
+                // A positive bank turns the deck's up towards its left, so the right-hand edge
+                // rises: into a left-hander, as TrackPoint.Bank says.
+                up = Quaternion.AngleAxis(banks[i], fwd) * up;
                 forwards[i] = fwd;
                 ups[i] = up;
                 rights[i] = Vector3.Cross(up, fwd).normalized;
@@ -226,14 +236,17 @@ namespace StuntCar
                 float vCorner = Mathf.Sqrt(grip * 9.81f * radius);
                 aiSpeeds[i] = Mathf.Min(aiSpeeds[i], vCorner, 80f);
             }
-            // Brake in time: walk backwards (twice round to cover the wrap).
+            // Brake in time: walk backwards (twice round to cover the wrap). Going downhill the
+            // brakes have gravity to fight, so braking for the bend at the foot of a drop starts sooner.
             for (int pass = 0; pass < 2; pass++)
             {
                 for (int i = n - 1; i >= 0; i--)
                 {
                     int next = (i + 1) % n;
                     float ds = Vector3.Distance(centers[i], centers[next]);
-                    float vMax = Mathf.Sqrt(aiSpeeds[next] * aiSpeeds[next] + 2f * AiBraking * ds);
+                    float slope = (centers[next].y - centers[i].y) / Mathf.Max(ds, 0.01f);
+                    float braking = Mathf.Max(2f, AiBraking + 9.81f * slope);
+                    float vMax = Mathf.Sqrt(aiSpeeds[next] * aiSpeeds[next] + 2f * braking * ds);
                     if (aiSpeeds[i] > vMax) aiSpeeds[i] = vMax;
                 }
             }
