@@ -18,7 +18,7 @@ namespace StuntCar
         {
             car = c;
             var a = GameBootstrap.Instance;
-            if (softDot == null) softDot = MakeSoftDot();
+            if (softDot == null) softDot = ProceduralTextures.SoftDot();
             if (a.particleSmoke) a.particleSmoke.SetTexture("_BaseMap", softDot);
             if (a.particleSpark) a.particleSpark.SetTexture("_BaseMap", softDot);
 
@@ -125,26 +125,6 @@ namespace StuntCar
         {
             var ep = new ParticleSystem.EmitParams { position = pos, velocity = vel, applyShapeToPosition = false };
             ps.Emit(ep, 1);
-        }
-
-        static Texture2D MakeSoftDot()
-        {
-            const int size = 64;
-            var tex = new Texture2D(size, size, TextureFormat.RGBA32, true) { name = "SoftDot", wrapMode = TextureWrapMode.Clamp };
-            var px = new Color32[size * size];
-            for (int y = 0; y < size; y++)
-            {
-                for (int x = 0; x < size; x++)
-                {
-                    float dx = (x + 0.5f) / size * 2f - 1f, dy = (y + 0.5f) / size * 2f - 1f;
-                    float a = Mathf.Clamp01(1f - Mathf.Sqrt(dx * dx + dy * dy));
-                    a = a * a * (3f - 2f * a);
-                    px[y * size + x] = new Color(1f, 1f, 1f, a);
-                }
-            }
-            tex.SetPixels32(px);
-            tex.Apply(true);
-            return tex;
         }
     }
 }

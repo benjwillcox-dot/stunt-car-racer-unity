@@ -28,9 +28,27 @@ namespace StuntCar
         public Material tailLight;
         public Material particleSmoke;
         public Material particleSpark;
+        // The Blender car and its two palette liveries. Cars fall back to primitives without them.
+        public GameObject carModel;
+        public Material playerCarSkin;
+        public Material opponentCarSkin;
+        // The Blender grandstand kit and its palette material. Without them the stands are built from boxes.
+        public GameObject grandstandModel;
+        public Material grandstandSkin;
 
         public static GameBootstrap Instance { get; private set; }
         public Material AsphaltRuntime { get; private set; }
+        public Material CrowdRuntime { get; private set; }
+        public Material KerbRedRuntime { get; private set; }
+        public Material KerbWhiteRuntime { get; private set; }
+        public Material LawnRuntime { get; private set; }
+        public Material PropsRuntime { get; private set; }
+        // These glow, so they're copies of the emissive floodlight material; TimeOfDay turns them up at night.
+        public Material AdvertsRuntime { get; private set; }
+        public Material FloodlightRuntime { get; private set; }
+        public Material HaloRuntime { get; private set; }
+        // The grandstands' palette; its windows, lamps and clocks glow at night (TimeOfDay).
+        public Material GrandstandRuntime { get; private set; }
         public PhysicsMaterial RoadPhysics { get; private set; }
         public PhysicsMaterial BodyPhysics { get; private set; }
 
@@ -46,9 +64,31 @@ namespace StuntCar
             AsphaltRuntime = new Material(asphalt) { name = "Asphalt (runtime)" };
             AsphaltRuntime.SetTexture("_BaseMap", ProceduralTextures.Asphalt());
 
+            // The seat material, untinted, with the crowd painted on.
+            CrowdRuntime = Textured(standSeats, "Crowd", ProceduralTextures.Crowd(), 0.1f);
+            // The kerbs keep their red and white; the texture adds grooves, grit and rubber.
+            var kerbTex = ProceduralTextures.Kerb();
+            KerbRedRuntime = Textured(kerbRed, "Kerb red", kerbTex, 0.35f, false);
+            KerbWhiteRuntime = Textured(kerbWhite, "Kerb white", kerbTex, 0.35f, false);
+            PropsRuntime = Textured(concrete, "Props", ProceduralTextures.Props(), 0.2f);
+            AdvertsRuntime = Textured(floodlight, "Adverts", ProceduralTextures.Adverts(), 0.3f);
+            AdvertsRuntime.SetTexture("_EmissionMap", AdvertsRuntime.GetTexture("_BaseMap"));
+            AdvertsRuntime.SetColor("_EmissionColor", TimeOfDay.AdvertGlowDay);
+            FloodlightRuntime = new Material(floodlight) { name = "Floodlight (runtime)" };
+            HaloRuntime = Textured(particleSpark, "Floodlight glow", ProceduralTextures.SoftDot(), 0f, false);
+            HaloRuntime.SetColor("_BaseColor", new Color(1.3f, 1.25f, 1.1f, 1f));
+            if (grandstandSkin)
+            {
+                GrandstandRuntime = new Material(grandstandSkin) { name = "Grandstand (runtime)" };
+                GrandstandRuntime.SetColor("_EmissionColor", TimeOfDay.GrandstandGlowDay);
+            }
+
             var grassTex = ProceduralTextures.Grass();
             grass.SetTexture("_BaseMap", grassTex);
             grass.SetTextureScale("_BaseMap", new Vector2(400, 400));
+            // The arena floor is mown in stripes; the hills keep plain grass.
+            LawnRuntime = new Material(grass) { name = "Lawn (runtime)" };
+            LawnRuntime.SetTexture("_BaseMap", ProceduralTextures.Lawn());
 
             RoadPhysics = new PhysicsMaterial("Road") { dynamicFriction = 0.6f, staticFriction = 0.6f };
             BodyPhysics = new PhysicsMaterial("CarBody")
@@ -85,6 +125,21 @@ namespace StuntCar
             tailLight = tailLight ? tailLight : Fallback(new Color(0.9f, 0.05f, 0.05f), 0.6f);
             particleSmoke = particleSmoke ? particleSmoke : ParticleFallback();
             particleSpark = particleSpark ? particleSpark : ParticleFallback();
+        }
+
+        // A runtime copy of a material with a generated texture on it, untinted unless asked to keep its colour.
+        static Material Textured(Material from, string name, Texture tex, float smoothness, bool untinted = true)
+        {
+            var m = new Material(from) { name = name + " (runtime)" };
+            m.SetTexture("_BaseMap", tex);
+            m.SetTexture("_MainTex", tex);
+            if (untinted)
+            {
+                m.SetColor("_BaseColor", Color.white);
+                m.SetColor("_Color", Color.white);
+            }
+            m.SetFloat("_Smoothness", smoothness);
+            return m;
         }
 
         static Material ParticleFallback()

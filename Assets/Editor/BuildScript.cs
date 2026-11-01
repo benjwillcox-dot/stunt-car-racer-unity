@@ -135,7 +135,12 @@ namespace StuntCar.EditorTools
             SetInt(so, "m_MainLightShadowmapResolution", 4096);
             SetBool(so, "m_SupportsHDR", true);
             SetInt(so, "m_MSAA", 4);
+            // Night races: the four corner floodlights cast shadows too.
+            SetBool(so, "m_AdditionalLightShadowsSupported", true);
             so.ApplyModifiedPropertiesWithoutUndo();
+            // Floodlights plus both cars' headlights all reach the one big road mesh.
+            pipeline.maxAdditionalLightsCount = 8;
+            pipeline.additionalLightsShadowmapResolution = 2048;
             EditorUtility.SetDirty(pipeline);
 
             GraphicsSettings.defaultRenderPipeline = pipeline;
@@ -176,6 +181,24 @@ namespace StuntCar.EditorTools
                 m.SetColor("_EmissionColor", emission.Value);
                 m.globalIlluminationFlags = MaterialGlobalIlluminationFlags.None;
             }
+            EditorUtility.SetDirty(m);
+            return m;
+        }
+
+        // Livery for the Blender car.
+        static Material CarSkin(string name, string scheme) =>
+            PaletteSkin(name, CarModelImport.Folder + "Textures/StuntCar_" + scheme, new Color(2f, 2f, 2f));
+
+        // Material for a palette-textured Blender model: albedo, metallic (R) / smoothness (A) and
+        // emission maps, named <tex>_Albedo.png and so on.
+        static Material PaletteSkin(string name, string tex, Color emission)
+        {
+            var m = Lit(name, Color.white, 1f, 0f, emission);
+            m.SetTexture("_BaseMap", AssetDatabase.LoadAssetAtPath<Texture2D>(tex + "_Albedo.png"));
+            m.SetTexture("_MetallicGlossMap", AssetDatabase.LoadAssetAtPath<Texture2D>(tex + "_MetallicSmoothness.png"));
+            m.EnableKeyword("_METALLICSPECGLOSSMAP");
+            m.SetFloat("_SmoothnessTextureChannel", 0f); // smoothness from the metallic map's alpha
+            m.SetTexture("_EmissionMap", AssetDatabase.LoadAssetAtPath<Texture2D>(tex + "_Emission.png"));
             EditorUtility.SetDirty(m);
             return m;
         }
@@ -337,6 +360,11 @@ namespace StuntCar.EditorTools
             boot.tailLight = Lit("TailLight", new Color(0.9f, 0.05f, 0.05f), 0.6f, 0f, new Color(3f, 0.15f, 0.1f));
             boot.particleSmoke = Particle("ParticleSmoke", Color.white, false);
             boot.particleSpark = Particle("ParticleSpark", new Color(4f, 2.2f, 0.8f), true);
+            boot.carModel = AssetDatabase.LoadAssetAtPath<GameObject>(CarModelImport.Folder + "StuntCar.fbx");
+            boot.playerCarSkin = CarSkin("CarYellow", "Yellow");
+            boot.opponentCarSkin = CarSkin("CarWhite", "White");
+            boot.grandstandModel = AssetDatabase.LoadAssetAtPath<GameObject>(GrandstandImport.Folder + "Grandstands.fbx");
+            boot.grandstandSkin = PaletteSkin("Grandstand", GrandstandImport.Folder + "Textures/Grandstand", TimeOfDay.GrandstandGlowDay);
 
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene, ScenePath);
