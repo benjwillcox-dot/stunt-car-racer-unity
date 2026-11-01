@@ -35,6 +35,10 @@ namespace StuntCar
         Vector3 trackCentre;
         float trackRadius;
         bool confirmReset;
+        bool nightOption;   // single races and practice
+
+        // League seasons end with a race under the floodlights; otherwise it's the menu's choice.
+        bool NightRace => mode == GameMode.League ? league.raceIndex == League.Races - 1 : nightOption;
 
         void Start()
         {
@@ -61,6 +65,7 @@ namespace StuntCar
         {
             ClearCars();
             LoadTrack(MenuTrack);
+            TimeOfDay.Set(NightRace);
             rig.Target = null;
             rig.enabled = false;
             state = State.Menu;
@@ -70,10 +75,17 @@ namespace StuntCar
         {
             ClearCars();
             LoadTrack(league.NextTrack);
+            TimeOfDay.Set(NightRace);
             rig.Target = null;
             rig.enabled = false;
             confirmReset = false;
             state = State.LeagueTable;
+        }
+
+        void ToggleNight()
+        {
+            nightOption = !nightOption;
+            TimeOfDay.Set(NightRace);
         }
 
         void LoadTrack(TrackDefinition def)
@@ -100,6 +112,7 @@ namespace StuntCar
         {
             ClearCars();
             LoadTrack(MenuTrack);
+            TimeOfDay.Set(NightRace);
 
             if (mode == GameMode.League)
             {
@@ -137,6 +150,7 @@ namespace StuntCar
             else car.gameObject.AddComponent<AIDriver>().Init(track, skill);
             car.gameObject.AddComponent<CarAudio>().Init(car, isPlayer);
             car.gameObject.AddComponent<CarEffects>().Init(car);
+            car.gameObject.AddComponent<Headlights>();
             rc.PlaceOnGrid(2, lateral);
             rc.LapCompleted += OnLapCompleted;
             if (isPlayer) car.Damaged += d => rig.Shake(d / 12f);
@@ -259,6 +273,7 @@ namespace StuntCar
                 if (v > 0) { selected = (selected - 1 + n) % n; LoadTrack(MenuTrack); }
             }
             if (h != 0) CycleMode(h > 0 ? 1 : -1);
+            if (mode != GameMode.League && GameInput.NightTogglePressed()) ToggleNight();
             if (enter) StartFromMenu();
         }
 
@@ -266,6 +281,7 @@ namespace StuntCar
         {
             mode = (GameMode)(((int)mode + dir + 3) % 3);
             LoadTrack(MenuTrack);
+            TimeOfDay.Set(NightRace);
         }
 
         void StartFromMenu()
@@ -441,25 +457,39 @@ namespace StuntCar
                 Box(info, new Color(0, 0, 0, 0.55f));
                 GUI.Label(new Rect(info.x + 16, info.y + 12, info.width - 32, info.height - 20),
                     $"Season {league.season}  -  Division {league.PlayerDivision}\n" +
-                    $"Race {league.raceIndex + 1} of {League.Races}: {league.NextTrack.Name}\n" +
+                    $"Race {league.raceIndex + 1} of {League.Races}: {league.NextTrack.Name}{(NightRace ? "  (night race)" : "")}\n" +
                     $"Rival: {league.NextRival.name}\n" +
                     $"Chassis damage carried: {Mathf.RoundToInt(league.carriedDamage)}%", left);
                 y += 165;
             }
             else
             {
+                // League tracks on the left, the long courses on the right.
                 var defs = TrackLibrary.All;
+                const float colW = 300f, rowH = 30f;
+                Shadowed(new Rect(w / 2 - colW - 10, y, colW, 24), "CLASSIC TRACKS", small);
+                Shadowed(new Rect(w / 2 + 10, y, colW, 24), "LONG COURSES", small);
+                y += 28;
+                float leftY = y, rightY = y;
                 for (int i = 0; i < defs.Length; i++)
                 {
-                    var r = new Rect(w / 2 - 260, y, 520, 34);
+                    bool isLong = defs[i].Division == 0;
+                    var r = new Rect(isLong ? w / 2 + 10 : w / 2 - colW - 10, isLong ? rightY : leftY, colW, rowH);
+                    if (isLong) rightY += rowH + 4; else leftY += rowH + 4;
                     Box(r, i == selected ? new Color(0.85f, 0.15f, 0.1f, 0.85f) : new Color(0, 0, 0, 0.55f));
                     if (GUI.Button(r, GUIContent.none, GUIStyle.none)) { selected = i; LoadTrack(MenuTrack); }
-                    GUI.Label(new Rect(r.x + 14, r.y + 4, 300, 30), defs[i].Name, left);
-                    GUI.Label(new Rect(r.x, r.y + 4, r.width - 14, 30), $"Division {defs[i].Division}", right);
-                    y += 38;
+                    GUI.Label(new Rect(r.x + 12, r.y + 2, colW - 90, rowH), defs[i].Name, left);
+                    GUI.Label(new Rect(r.x, r.y + 2, r.width - 12, rowH), isLong ? $"{defs[i].LapLength / 1000f:0.0} km" : $"Div {defs[i].Division}", right);
                 }
+                y = Mathf.Max(leftY, rightY) + 4;
                 Shadowed(new Rect(0, y, w, 30), defs[selected].Description, small);
                 y += 36;
+
+                var timeRect = new Rect(w / 2 - 160, y, 320, 36);
+                Box(timeRect, nightOption ? new Color(0.08f, 0.12f, 0.32f, 0.9f) : new Color(0, 0, 0, 0.55f));
+                if (GUI.Button(timeRect, GUIContent.none, GUIStyle.none)) ToggleNight();
+                Shadowed(timeRect, nightOption ? "<   NIGHT RACE   >" : "<   DAY RACE   >", small);
+                y += 46;
             }
 
             var startRect = new Rect(w / 2 - 130, y, 260, 54);
@@ -467,7 +497,7 @@ namespace StuntCar
             if (GUI.Button(startRect, GUIContent.none, GUIStyle.none)) StartFromMenu();
             Shadowed(startRect, mode == GameMode.League ? "LEAGUE TABLE" : "START", medium);
 
-            Shadowed(new Rect(0, h - 60, w, 24), "Up/Down: track    Left/Right: mode    Enter or pad A: start", small);
+            Shadowed(new Rect(0, h - 60, w, 24), "Up/Down: track    Left/Right: mode    N or pad X: day/night    Enter or pad A: start", small);
             Shadowed(new Rect(0, h - 34, w, 24), "Drive: Arrows/WASD or gamepad   Boost: Space   Camera: C   Crane: R", small);
         }
 
@@ -489,7 +519,7 @@ namespace StuntCar
             var next = new Rect(w / 2 - 330, y, 660, 60);
             Box(next, new Color(0, 0, 0, 0.6f));
             GUI.Label(new Rect(next.x + 16, next.y + 6, next.width - 32, 50),
-                $"Race {league.raceIndex + 1} of {League.Races}:  {league.NextTrack.Name}  v  {league.NextRival.name}\n" +
+                $"Race {league.raceIndex + 1} of {League.Races}:  {league.NextTrack.Name}  v  {league.NextRival.name}{(NightRace ? "   -   NIGHT RACE" : "")}\n" +
                 $"Chassis damage carried: {Mathf.RoundToInt(league.carriedDamage)}%", new GUIStyle(left) { fontSize = 18 });
             y += 72;
 

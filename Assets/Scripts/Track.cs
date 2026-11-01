@@ -38,8 +38,10 @@ namespace StuntCar
         public float HalfWidth => Width * 0.5f;
 
         Vector3[] centers, forwards, rights, ups;
-        float[] distances, aiSpeeds, aiMinSpeeds;
+        float[] distances, aiSpeeds, aiMinSpeeds, bankAngles;
         bool[] gaps; // no road from this sample to the next
+        bool[] drawbridgeGaps; // ...because a drawbridge spans it
+        readonly List<MovingBridge> drawbridges = new List<MovingBridge>();
 
         public int Wrap(int i)
         {
@@ -56,6 +58,22 @@ namespace StuntCar
         public float AiSpeed(int i) => aiSpeeds[Wrap(i)];
         public float AiMinSpeed(int i) => aiMinSpeeds[Wrap(i)];
         public bool IsGap(int i) => gaps[Wrap(i)];
+        public bool IsDrawbridge(int i) => drawbridgeGaps[Wrap(i)];
+
+        /// <summary>
+        /// The speed the AI should keep to on the run-up to a drawbridge that's lifting or up
+        /// (no limit if none is close ahead or it's down), so it hops it rather than flying off.
+        /// </summary>
+        public float BridgeSpeedCap(int i)
+        {
+            float cap = 999f;
+            foreach (var b in drawbridges)
+            {
+                if (Wrap(b.StartIndex - i) > 45 || b.Angle < 3f) continue;   // more than ~90 m off, or down
+                cap = Mathf.Min(cap, Mathf.Lerp(30f, 14f, b.Angle / MovingBridge.MaxAngle));
+            }
+            return cap;
+        }
 
         /// <summary>A sample safely before any gap near <paramref name="i"/>, for dropping a car back on.</summary>
         public int SafeIndex(int i)
@@ -107,7 +125,25 @@ namespace StuntCar
             ComputeAiSpeeds();
             BuildRoad(assets);
             BuildScaffolding(assets);
+            BuildDrawbridges(assets);
             Scenery.BuildStadium(this, assets);
+        }
+
+        // A moving bridge over each run of drawbridge gap, hinged where the road stops and starts.
+        void BuildDrawbridges(GameBootstrap assets)
+        {
+            int n = centers.Length;
+            for (int i = 0; i < n; i++)
+            {
+                if (!drawbridgeGaps[i] || IsDrawbridge(i - 1)) continue;
+                int end = i;
+                while (IsDrawbridge(end) && end < i + n) end++;
+                var go = new GameObject("Drawbridge");
+                go.transform.SetParent(transform, false);
+                var bridge = go.AddComponent<MovingBridge>();
+                bridge.Init(this, i, Wrap(end), assets);
+                drawbridges.Add(bridge);
+            }
         }
 
         static Vector3 CatmullRom(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, float t)
@@ -125,6 +161,7 @@ namespace StuntCar
             var hints = new List<float>();
             var mins = new List<float>();
             var gapList = new List<bool>();
+            var bridgeList = new List<bool>();
 
             for (int i = 0; i < n; i++)
             {
@@ -140,6 +177,7 @@ namespace StuntCar
                     hints.Add(Mathf.Min(p1.SpeedHint, p2.SpeedHint));
                     mins.Add(p1.MinSpeed);
                     gapList.Add(p1.Gap);
+                    bridgeList.Add(p1.Drawbridge);
                 }
             }
 
@@ -152,6 +190,8 @@ namespace StuntCar
             aiSpeeds = hints.ToArray();
             aiMinSpeeds = mins.ToArray();
             gaps = gapList.ToArray();
+            drawbridgeGaps = bridgeList.ToArray();
+            bankAngles = banks.ToArray();
 
             for (int i = 0; i < count; i++)
             {
@@ -177,9 +217,13 @@ namespace StuntCar
                 // Horizontal radius from the circumcircle of three points.
                 Vector2 A = new Vector2(a.x, a.z), B = new Vector2(b.x, b.z), C = new Vector2(c.x, c.z);
                 float ab = (A - B).magnitude, bc = (B - C).magnitude, ca = (C - A).magnitude;
-                float cross = Mathf.Abs((B.x - A.x) * (C.y - A.y) - (B.y - A.y) * (C.x - A.x));
+                float turn = (B.x - A.x) * (C.y - A.y) - (B.y - A.y) * (C.x - A.x);   // > 0 for a left-hander
+                float cross = Mathf.Abs(turn);
                 float radius = cross < 0.0001f ? 10000f : (ab * bc * ca) / (2f * cross);
-                float vCorner = Mathf.Sqrt(AiGrip * 9.81f * radius);
+                // Banking into the bend helps; off camber takes grip away.
+                float camber = bankAngles[i] * Mathf.Sign(turn) * Mathf.Deg2Rad;
+                float grip = Mathf.Max(0.6f, AiGrip + Mathf.Tan(camber));
+                float vCorner = Mathf.Sqrt(grip * 9.81f * radius);
                 aiSpeeds[i] = Mathf.Min(aiSpeeds[i], vCorner, 80f);
             }
             // Brake in time: walk backwards (twice round to cover the wrap).
@@ -221,8 +265,12 @@ namespace StuntCar
             float line = inner - EdgeLine;
             float lineU = EdgeLine / (2f * inner);
             var top = DeckTop();
-            var mb = new MeshBuilder(5);
-            var kerbs = new MeshBuilder(2);
+            // The road is drawn in pieces about 80 m long, so each piece is lit by the floodlights
+            // nearest it (a renderer only takes its eight closest lights); physics gets it whole.
+            int chunks = (n + ChunkSamples - 1) / ChunkSamples;
+            var roadParts = new MeshBuilder[chunks];
+            var kerbParts = new MeshBuilder[chunks];
+            for (int c = 0; c < chunks; c++) { roadParts[c] = new MeshBuilder(5); kerbParts[c] = new MeshBuilder(2); }
             // Blocks are cut by distance round the lap, and there's an even number of them, so they
             // are all the same length and red and white alternate all the way round.
             float block = Length / (2 * Mathf.Max(1, Mathf.RoundToInt(Length / (2f * KerbBlock))));
@@ -230,6 +278,8 @@ namespace StuntCar
             for (int i = 0; i < n; i++)
             {
                 int j = i + 1;
+                var mb = roadParts[i / ChunkSamples];
+                var kerbs = kerbParts[i / ChunkSamples];
 
                 if (gaps[i])
                 {
@@ -259,7 +309,9 @@ namespace StuntCar
                 {
                     int blk = Mathf.FloorToInt(Mathf.Lerp(d0, d1, t0) / block + 0.001f);
                     float t1 = Mathf.Min(1f, ((blk + 1) * block - d0) / (d1 - d0));
-                    AddKerbs(kerbs, i, t0, t1, (blk & 1) == 0 ? KerbRed : KerbWhite);
+                    // The texture repeats once per block, V running 0..1 along it.
+                    float va = Mathf.Lerp(d0, d1, t0) / block - blk, vb = Mathf.Lerp(d0, d1, t1) / block - blk;
+                    AddKerbs(kerbs, i, t0, t1, va, vb, (blk & 1) == 0 ? KerbRed : KerbWhite);
                     t0 = t1;
                 }
 
@@ -269,18 +321,22 @@ namespace StuntCar
                 mb.AddQuad(SubSides, Pt(i, hw, -Thickness), Pt(j, hw, -Thickness), Pt(j, -hw, -Thickness), Pt(i, -hw, -Thickness));
             }
 
-            // The kerbs get their own collider so wheels can tell when they're riding them.
-            var kerbMesh = kerbs.ToMesh("Kerbs");
-            var kerbGo = new GameObject("Kerbs");
-            kerbGo.transform.SetParent(transform, false);
-            kerbGo.AddComponent<MeshFilter>().sharedMesh = kerbMesh;
-            kerbGo.AddComponent<MeshRenderer>().sharedMaterials = new[] { assets.kerbRed, assets.kerbWhite };
-            var kerbCollider = kerbGo.AddComponent<MeshCollider>();
-            kerbCollider.sharedMesh = kerbMesh;
-            kerbCollider.sharedMaterial = assets.RoadPhysics;
-            kerbGo.AddComponent<KerbSurface>();
+            var roadMeshes = new Mesh[chunks];
+            var kerbMeshes = new Mesh[chunks];
+            for (int c = 0; c < chunks; c++) { roadMeshes[c] = roadParts[c].ToMesh("Road"); kerbMeshes[c] = kerbParts[c].ToMesh("Kerbs"); }
 
-            var collisionMesh = mb.ToMesh("RoadCollision");
+            // One collider for the road and one for the kerbs, so wheels can tell when they're on a kerb.
+            var roadCollider = new GameObject("Road collider");
+            roadCollider.transform.SetParent(transform, false);
+            var mc = roadCollider.AddComponent<MeshCollider>();
+            mc.sharedMesh = Combine(roadMeshes, "Road collision");
+            mc.sharedMaterial = assets.RoadPhysics;
+            var kerbCollider = new GameObject("Kerb collider");
+            kerbCollider.transform.SetParent(transform, false);
+            var kc = kerbCollider.AddComponent<MeshCollider>();
+            kc.sharedMesh = Combine(kerbMeshes, "Kerb collision");
+            kc.sharedMaterial = assets.RoadPhysics;
+            kerbCollider.AddComponent<KerbSurface>();
 
             // Chequered start line, drawn just above the deck and kept out of the collider.
             const int cols = 8;
@@ -293,30 +349,58 @@ namespace StuntCar
                     float l1 = Mathf.Lerp(-inner, inner, (c + 1) / (float)cols);
                     Vector3 f0 = Forward(0) * (row * 0.9f), f1 = Forward(0) * ((row + 1) * 0.9f);
                     int sub = ((row + c) & 1) == 0 ? SubStartDark : SubKerbWhite;
-                    mb.AddQuad(sub, Pt(0, l0, lift) + f0, Pt(0, l0, lift) + f1, Pt(0, l1, lift) + f1, Pt(0, l1, lift) + f0);
+                    roadParts[0].AddQuad(sub, Pt(0, l0, lift) + f0, Pt(0, l0, lift) + f1, Pt(0, l1, lift) + f1, Pt(0, l1, lift) + f0);
                 }
             }
+            roadMeshes[0] = roadParts[0].ToMesh("Road");
 
-            var road = new GameObject("Road");
-            road.transform.SetParent(transform, false);
-            road.AddComponent<MeshFilter>().sharedMesh = mb.ToMesh("Road");
-            var mr = road.AddComponent<MeshRenderer>();
-            mr.sharedMaterials = new[] { assets.AsphaltRuntime, assets.kerbRed, assets.kerbWhite, assets.concrete, assets.darkMetal };
-            var mc = road.AddComponent<MeshCollider>();
-            mc.sharedMesh = collisionMesh;
-            mc.sharedMaterial = assets.RoadPhysics;
+            var roadMaterials = new[] { assets.AsphaltRuntime, assets.kerbRed, assets.kerbWhite, assets.concrete, assets.darkMetal };
+            var kerbMaterials = new[] { assets.KerbRedRuntime, assets.KerbWhiteRuntime };
+            for (int c = 0; c < chunks; c++)
+            {
+                AddRenderer("Road", roadMeshes[c], roadMaterials);
+                AddRenderer("Kerbs", kerbMeshes[c], kerbMaterials);
+            }
+        }
+
+        const int ChunkSamples = 40;
+
+        void AddRenderer(string name, Mesh mesh, Material[] materials)
+        {
+            if (mesh.vertexCount == 0) return;
+            var go = new GameObject(name);
+            go.transform.SetParent(transform, false);
+            go.AddComponent<MeshFilter>().sharedMesh = mesh;
+            go.AddComponent<MeshRenderer>().sharedMaterials = materials;
+        }
+
+        // All the pieces' triangles in one mesh, for a collider.
+        static Mesh Combine(Mesh[] parts, string name)
+        {
+            var combine = new List<CombineInstance>();
+            foreach (var m in parts)
+                for (int s = 0; s < m.subMeshCount; s++)
+                    if (m.GetSubMesh(s).indexCount > 0)
+                        combine.Add(new CombineInstance { mesh = m, subMeshIndex = s, transform = Matrix4x4.identity });
+            var mesh = new Mesh { name = name, indexFormat = UnityEngine.Rendering.IndexFormat.UInt32 };
+            mesh.CombineMeshes(combine.ToArray(), true, true);
+            return mesh;
         }
 
         // Both kerbs over part (t0..t1) of the stretch from sample i to the next, one quad per facet.
-        void AddKerbs(MeshBuilder mb, int i, float t0, float t1, int sub)
+        // U runs across each kerb from its inner edge, V along it (va..vb).
+        void AddKerbs(MeshBuilder mb, int i, float t0, float t1, float va, float vb, int sub)
         {
             float inner = HalfWidth - KerbWidth;
             for (int k = 0; k + 1 < KerbProfile.Length; k++)
             {
-                float la = inner + KerbProfile[k].x * KerbWidth, ha = KerbProfile[k].y * KerbHeight;
-                float lb = inner + KerbProfile[k + 1].x * KerbWidth, hb = KerbProfile[k + 1].y * KerbHeight;
-                mb.AddQuad(sub, Pt(i, t0, la, ha), Pt(i, t1, la, ha), Pt(i, t1, lb, hb), Pt(i, t0, lb, hb));
-                mb.AddQuad(sub, Pt(i, t0, -lb, hb), Pt(i, t1, -lb, hb), Pt(i, t1, -la, ha), Pt(i, t0, -la, ha));
+                float ua = KerbProfile[k].x, ub = KerbProfile[k + 1].x;
+                float la = inner + ua * KerbWidth, ha = KerbProfile[k].y * KerbHeight;
+                float lb = inner + ub * KerbWidth, hb = KerbProfile[k + 1].y * KerbHeight;
+                mb.AddQuad(sub, Pt(i, t0, la, ha), Pt(i, t1, la, ha), Pt(i, t1, lb, hb), Pt(i, t0, lb, hb),
+                    new Vector2(ua, va), new Vector2(ua, vb), new Vector2(ub, vb), new Vector2(ub, va));
+                mb.AddQuad(sub, Pt(i, t0, -lb, hb), Pt(i, t1, -lb, hb), Pt(i, t1, -la, ha), Pt(i, t0, -la, ha),
+                    new Vector2(ub, va), new Vector2(ub, vb), new Vector2(ua, vb), new Vector2(ua, va));
             }
         }
 

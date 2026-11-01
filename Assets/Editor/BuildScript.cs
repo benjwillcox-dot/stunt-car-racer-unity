@@ -136,7 +136,12 @@ namespace StuntCar.EditorTools
             SetInt(so, "m_MainLightShadowmapResolution", 4096);
             SetBool(so, "m_SupportsHDR", true);
             SetInt(so, "m_MSAA", 4);
+            // Night races: the four corner floodlights cast shadows too.
+            SetBool(so, "m_AdditionalLightShadowsSupported", true);
             so.ApplyModifiedPropertiesWithoutUndo();
+            // Floodlights plus both cars' headlights all reach the one big road mesh.
+            pipeline.maxAdditionalLightsCount = 8;
+            pipeline.additionalLightsShadowmapResolution = 2048;
             EditorUtility.SetDirty(pipeline);
 
             GraphicsSettings.defaultRenderPipeline = pipeline;

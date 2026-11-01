@@ -137,6 +137,16 @@ namespace StuntCar
             return k;
         }
 
+        /// <summary>Day / night on the menu (N / X).</summary>
+        public static bool NightTogglePressed()
+        {
+            bool k = Input.GetKeyDown(KeyCode.N);
+#if ENABLE_INPUT_SYSTEM
+            k |= Gamepad.current != null && Gamepad.current.buttonWest.wasPressedThisFrame;
+#endif
+            return k;
+        }
+
         /// <summary>Back in menus (Esc / B / Start).</summary>
         public static bool BackPressed()
         {

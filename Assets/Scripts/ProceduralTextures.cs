@@ -3,7 +3,7 @@ using UnityEngine;
 namespace StuntCar
 {
     /// <summary>Textures generated at start-up, so the project needs no image files yet.</summary>
-    public static class ProceduralTextures
+    public static partial class ProceduralTextures
     {
         /// <summary>Asphalt with a dashed centre line. U runs across the road, V along it (one tile = 8 m).</summary>
         public static Texture2D Asphalt()
@@ -41,6 +41,17 @@ namespace StuntCar
         /// them in the two cars' colours.
         /// </summary>
         public static Texture2D Crowd()
+        {
+            var tex = new Texture2D(1024, 512, TextureFormat.RGBA32, true)
+            {
+                name = "Crowd", wrapModeU = TextureWrapMode.Repeat, wrapModeV = TextureWrapMode.Clamp, anisoLevel = 8,
+            };
+            tex.SetPixels(CrowdPixels());
+            tex.Apply(true);
+            return tex;
+        }
+
+        public static Color[] CrowdPixels()
         {
             const int w = 1024, h = 512, seats = 24;
             const int rowH = h / CrowdRows;
@@ -115,18 +126,11 @@ namespace StuntCar
                 Blob(px, w, x + 10f, y0 + 28f, x + 12f, y0 + 63f, 0.5f, new Color(0.7f, 0.7f, 0.7f));
                 Blob(px, w, x + 12f, y0 + 45f, x + 36f, y0 + 62f, 1f, c);
             }
-
-            var tex = new Texture2D(w, h, TextureFormat.RGBA32, true)
-            {
-                name = "Crowd", wrapModeU = TextureWrapMode.Repeat, wrapModeV = TextureWrapMode.Clamp, anisoLevel = 8,
-            };
-            tex.SetPixels(px);
-            tex.Apply(true);
-            return tex;
+            return px;
         }
 
         // Paints a rounded rectangle (corner radius r) with a soft 1 px edge; x wraps round the texture.
-        static void Blob(Color[] px, int w, float x0, float y0, float x1, float y1, float r, Color c)
+        internal static void Blob(Color[] px, int w, float x0, float y0, float x1, float y1, float r, Color c)
         {
             int h = px.Length / w;
             float cx = (x0 + x1) * 0.5f, cy = (y0 + y1) * 0.5f;

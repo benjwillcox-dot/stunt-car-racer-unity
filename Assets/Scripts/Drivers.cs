@@ -10,6 +10,9 @@ namespace StuntCar
     {
         const float SlipStart = 3.5f, SlipFull = 12f;   // wheel slip (m/s); smoke starts at 3.5 too
 
+        /// <summary>The player's car, for anything that wants to follow it (the big screen's camera).</summary>
+        public static PlayerDriver Current { get; private set; }
+
         CarController car;
         RaceCar raceCar;
         int kerbWheels;
@@ -20,11 +23,13 @@ namespace StuntCar
             car = GetComponent<CarController>();
             raceCar = GetComponent<RaceCar>();
             car.HitCar += OnHitCar;
+            Current = this;
         }
 
         void OnDestroy()
         {
             if (car) car.HitCar -= OnHitCar;
+            if (Current == this) Current = null;
         }
 
         // A short clunk from the heavy motor, harder and longer the faster the cars met.
@@ -132,6 +137,8 @@ namespace StuntCar
             // Jumps need a minimum speed whatever the skill, or the car drops into the gap.
             float minSpeed = Mathf.Max(track.AiMinSpeed(track.IndexAhead(i, 4f)), track.AiMinSpeed(track.IndexAhead(i, 30f)));
             target = Mathf.Max(target, minSpeed * 1.05f);
+            // Hop a raised drawbridge rather than launching off it.
+            target = Mathf.Min(target, track.BridgeSpeedCap(i));
             if (car.GroundedWheels == 0)
             {
                 car.Throttle = 0f; car.Brake = 0f;

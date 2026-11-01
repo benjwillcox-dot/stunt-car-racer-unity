@@ -6,10 +6,16 @@ a WebGL version with GitHub Actions ([GameCI](https://game.ci)) and publishes it
 
 ## What's in it
 
-- **All 8 tracks**, paired by division: Little Ramp and Hump Back (Div 4), Stepping Stones and
-  Big Ramp (Div 3), Ski Jump and Draw Bridge (Div 2), High Jump and Roller Coaster (Div 1).
-  Draw Bridge, Ski Jump and High Jump have gaps you have to jump; Roller Coaster is a figure
-  of eight that crosses over itself.
+- **12 road courses**, laid out from their corners (`TrackCourse.cs`) with bends both ways,
+  chicanes and hairpin spurs, some banked into the turn and some off camber. The 8 league tracks
+  (0.95–1.2 km), paired by division: Little Ramp and Hump Back (Div 4), Stepping Stones and Big
+  Ramp (Div 3), Ski Jump and Draw Bridge (Div 2), High Jump and Roller Coaster (Div 1). Plus 4
+  long courses (1.6–1.8 km, single race and practice): Camel Back, Big Dipper (a figure of eight
+  with steep 25° hills), Leap Frog and Swing Bridge.
+- Gaps to jump, rows of **kickers** to pace (up to about 30 m/s you land in the flat; faster and
+  you hit the next ramp as it rises), and a moving **drawbridge** on Draw Bridge and Swing
+  Bridge: down you drive over, part way up it's a ramp, high up it throws you a long way. Its
+  lamps show red while it's moving or up.
 - **Modelled stunt car** (Blender, ~15k triangles): supercharged V8, zoomie side pipes, roll cage
   and driver, in a yellow livery for you and a white/teal one for the rival
 - Raycast-suspension car with a tyre grip model, rear-wheel drive and limited **boost**
@@ -17,11 +23,18 @@ a WebGL version with GitHub Actions ([GameCI](https://game.ci)) and publishes it
 - **Crane recovery** when you fall off or end up on your roof: a lifting platform carries the car
   back to the road (the time it takes is the penalty)
 - A stadium built round each track: tall grandstands packed with fans close to the deck, with
-  roofs and floodlight masts
+  roofs, sponsors' boards (all made-up brands), a start/finish gantry and floodlight masts
+- An infield with the pit paddock (garages, transporters, tents), a fan zone with food stalls and
+  a big screen showing a live TV feed of your car, tyre walls, hay bales under the jumps, marshal
+  huts, mown stripes and the game's name painted on the grass
+- **Night races** lit by the four corner floodlights, each casting its own shadow, with backlit
+  boards and headlights. Pick Day or Night for single races and practice; every league season
+  ends with a night race.
 - **League**: 4 divisions of 3 drivers, 4-race seasons, 2 points a win and 1 for the fastest lap,
   promotion and relegation; damage carries between races in a season. Saved in the browser.
 - Single race v CPU and practice modes
-- Sloped red-and-white **kerbs** you can ride, with a painted edge line inside them
+- Sloped red-and-white **kerbs** you can ride, with ribs, grit and tyre rubber on them and a
+  painted edge line inside them
 - Keyboard, **gamepad** (Input System) and joystick-style steering wheels. Pads rumble on the
   kerbs, clunk when you hit the other car and buzz gently while the tyres slide; in the WebGL
   build that goes through the browser's Gamepad API (Chrome and Edge).
@@ -34,7 +47,9 @@ a WebGL version with GitHub Actions ([GameCI](https://game.ci)) and publishes it
 
 `preview/index.html` is a Three.js port of the same game (same track points, physics numbers,
 AI and league rules) that runs in any browser without a Unity build. Use it to try handling
-changes quickly; tuning values carry straight back to `Assets/Scripts`.
+changes quickly; tuning values carry straight back to `Assets/Scripts`. Its track list is
+generated from `TrackLibrary.cs`'s output, so the layouts match; its drawbridges stay down, and
+it has none of the stadium, night or infield dressing.
 
 ## Controls
 
@@ -43,6 +58,7 @@ changes quickly; tuning values carry straight back to `Assets/Scripts`.
 | Arrows / WASD | Left stick, triggers | Steer, accelerate, brake/reverse |
 | Space / Left Shift | A | Boost |
 | C | Y | Toggle chase / cockpit camera |
+| N | X | Day / night (menu, single race and practice) |
 | R | B | Call the crane |
 | Esc | Start | Menu (retire, in a league race) |
 
@@ -54,6 +70,8 @@ settings. Then it builds WebGL. The game itself (track, cars, scenery) is genera
 
 You can also open the project in the Unity Editor (6000.3.27f1) and run
 **Stunt Car → Generate Project Assets**, then press Play on `Assets/Scenes/Main.unity`.
+Run it again whenever `BuildScript` changes, since it also sets the URP options; the night
+floodlights' shadows, for example, need its additional-light settings.
 
 ### The car model
 
@@ -86,7 +104,7 @@ running its `rebuild_all.py` re-exports straight into `Assets/Models/StuntCar`.
 ## Roadmap
 
 1. Tune the handling against the original's feel
-2. Moving drawbridge on Draw Bridge
+2. A moving drawbridge in the browser preview
 3. Steering-wheel pedal mapping and a controls screen
 4. Real scenery models, recorded sound effects (the car model is in)
 5. Two-player split screen
