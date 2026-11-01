@@ -17,7 +17,7 @@ namespace StuntCar
         const float KerbHeight = 0.09f;   // at the outer edge; the inner edge is flush with the asphalt
         const float KerbBlock = 1.5f;     // rough length of each red or white block
         const float EdgeLine = 0.12f;     // white line painted along the inside of each kerb
-        const float AiGrip = 1.15f;     // lateral g the AI plans corners with
+        const float AiGrip = 1.0f;      // lateral g the AI plans corners with (the tyres peak a little higher)
         const float AiBraking = 7f;     // m/s^2 the AI plans braking with
 
         // Kerb cross-section from the inner edge out, as fractions of KerbWidth and KerbHeight.

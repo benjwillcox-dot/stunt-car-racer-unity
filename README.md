@@ -18,7 +18,10 @@ a WebGL version with GitHub Actions ([GameCI](https://game.ci)) and publishes it
   lamps show red while it's moving or up.
 - **Modelled stunt car** (Blender, ~15k triangles): supercharged V8, zoomie side pipes, roll cage
   and driver, in a yellow livery for you and a white/teal one for the rival
-- Raycast-suspension car with a tyre grip model, rear-wheel drive and limited **boost**
+- Raycast independent suspension with front and rear **anti-roll bars**; tyres whose sideways grip
+  follows the slip angle (peaking at 7° then easing off as they slide) and grows less than in
+  proportion to load; rear-wheel drive, so too much throttle in a bend steps the tail out; and
+  limited **boost**
 - **Chassis damage** from hard landings and crashes; at 100% you're wrecked
 - **Crane recovery** when you fall off or end up on your roof: a lifting platform carries the car
   back to the road (the time it takes is the penalty)

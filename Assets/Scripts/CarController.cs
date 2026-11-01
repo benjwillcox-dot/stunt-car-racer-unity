@@ -29,11 +29,21 @@ namespace StuntCar
         public float damperRate = 3200f;
         public float bumpStopRate = 140000f;
 
+        [Header("Anti-roll bars")]
+        // Resist the body leaning by moving load from the outside wheel to the inside one, as a
+        // spring would (N per metre of left-right difference in compression). The stiffer end
+        // takes more of the load transfer and so lets go first: a stiffer front is steadier, a
+        // stiffer rear turns in harder.
+        public float frontAntiRoll = 22000f;
+        public float rearAntiRoll = 11000f;
+
         [Header("Tyres")]
-        public float tyreGrip = 1.45f;          // friction coefficient
-        public float lateralStiffness = 9f;     // how hard tyres resist sliding sideways
+        public float tyreGrip = 1.45f;          // peak friction coefficient, at a tyre's share of the car's weight
+        public float peakSlipAngle = 7f;        // degrees: sideways grip builds to here, then eases off as the tyre slides
+        public float tyreShape = 1.3f;          // curve shape (Pacejka's C): 1.3 keeps about 89% of the peak when well past it
+        public float loadSensitivity = 0.85f;   // grip grows as load to this power, so the more loaded tyre gets less per newton
         public float rollingResistance = 25f;
-        public float tyreForceLift = 0.35f;     // apply tyre forces this far above the contact (less roll)
+        public float tyreForceLift = 0.1f;      // apply tyre forces this far above the contact (a little less roll)
 
         [Header("Engine")]
         public float engineForce = 9000f;
@@ -96,6 +106,9 @@ namespace StuntCar
             public bool onKerb;
             public Vector3 contact;
             public float slip;      // sideways sliding speed plus wheelspin, m/s
+            // This step's suspension, worked out before the tyres.
+            public Vector3 origin, normal;
+            public float load;      // newtons pressing the tyre into the road, springs and anti-roll bar
         }
 
         Wheel[] wheels;
@@ -196,16 +209,18 @@ namespace StuntCar
             int grounded = 0;
             float worstLanding = 0f;
 
+            // The suspension first: where each wheel meets the road and how hard its spring pushes.
             foreach (var w in wheels)
             {
-                Vector3 origin = transform.TransformPoint(w.mount);
+                w.origin = transform.TransformPoint(w.mount);
                 float maxDist = restLength + w.radius;
 
-                if (!Physics.Raycast(origin, -up, out RaycastHit hit, maxDist, rayMask, QueryTriggerInteraction.Ignore))
+                if (!Physics.Raycast(w.origin, -up, out RaycastHit hit, maxDist, rayMask, QueryTriggerInteraction.Ignore))
                 {
                     w.grounded = false;
                     w.onKerb = false;
                     w.lastCompression = 0f;
+                    w.load = 0f;
                     w.springLength = Mathf.MoveTowards(w.springLength, restLength, dt * 2f);
                     continue;
                 }
@@ -213,11 +228,13 @@ namespace StuntCar
                 grounded++;
                 w.grounded = true;
                 w.onKerb = hit.collider.TryGetComponent(out KerbSurface _);
+                w.contact = hit.point;
+                w.normal = hit.normal;
                 w.springLength = Mathf.Max(0f, hit.distance - w.radius);
                 float compression = 1f - w.springLength / restLength;            // 0 = extended, 1 = fully compressed
                 // Rate the mount is closing on the (static) road. Using velocity rather than the change in
                 // compression avoids a huge damper spike on the first frame after landing.
-                float compressionSpeed = -Vector3.Dot(Body.GetPointVelocity(origin), up);
+                float compressionSpeed = -Vector3.Dot(Body.GetPointVelocity(w.origin), up);
                 w.lastCompression = compression;
 
                 float load = compression * restLength * springRate + compressionSpeed * damperRate;
@@ -226,19 +243,38 @@ namespace StuntCar
                     load += (compression - 0.85f) * restLength * bumpStopRate;
                     worstLanding = Mathf.Max(worstLanding, compressionSpeed);
                 }
-                load = Mathf.Max(0f, load);
-                Body.AddForceAtPosition(up * load, origin);
+                w.load = Mathf.Max(0f, load);
+            }
+            GroundedWheels = grounded;
+            AntiRollBar(true, frontAntiRoll);
+            AntiRollBar(false, rearAntiRoll);
+
+            // Then the tyres, on the loads the springs and bars have settled.
+            float nominalLoad = massPerWheel * 9.81f;
+            foreach (var w in wheels)
+            {
+                if (!w.grounded) continue;
+                Body.AddForceAtPosition(up * w.load, w.origin);
 
                 // Tyre axes on the road surface.
                 Vector3 wheelFwd = w.front ? Quaternion.AngleAxis(CurrentSteerAngle, up) * transform.forward : transform.forward;
-                wheelFwd = Vector3.ProjectOnPlane(wheelFwd, hit.normal).normalized;
-                Vector3 wheelRight = Vector3.Cross(hit.normal, wheelFwd);
+                wheelFwd = Vector3.ProjectOnPlane(wheelFwd, w.normal).normalized;
+                Vector3 wheelRight = Vector3.Cross(w.normal, wheelFwd);
 
-                Vector3 pointVel = Body.GetPointVelocity(hit.point);
+                Vector3 pointVel = Body.GetPointVelocity(w.contact);
                 float vLong = Vector3.Dot(pointVel, wheelFwd);
                 float vLat = Vector3.Dot(pointVel, wheelRight);
 
-                float latForce = -vLat * lateralStiffness * massPerWheel;
+                // Grip grows less than in proportion to load, so loading one tyre of a pair up costs the pair.
+                float load = Mathf.Min(w.load, nominalLoad * 3f);
+                float peakForce = tyreGrip * nominalLoad * Mathf.Pow(load / nominalLoad, loadSensitivity);
+
+                // Sideways force from the slip angle, with a floor on the speed so it stays sane
+                // when nearly stopped, and never more than would stop the slide this step.
+                float slipAngle = Mathf.Atan2(vLat, Mathf.Max(Mathf.Abs(vLong), 3f));
+                float stopSlide = Mathf.Abs(vLat) * massPerWheel / dt;
+                float latForce = Mathf.Clamp(-peakForce * TyreCurve(slipAngle), -stopSlide, stopSlide);
+
                 float longForce = w.driven ? drivePerWheel : 0f;
                 longForce -= vLong * rollingResistance;
                 if (braking > 0f)
@@ -248,19 +284,17 @@ namespace StuntCar
                     longForce -= Mathf.Sign(vLong) * Mathf.Min(braking / wheels.Length, stop);
                 }
 
-                float maxForce = tyreGrip * Mathf.Min(load, massPerWheel * 9.81f * 3f);
+                // Driving, braking and cornering share the one grip limit.
                 Vector2 f = new Vector2(longForce, latForce);
-                if (f.sqrMagnitude > maxForce * maxForce) f = f.normalized * maxForce;
+                if (f.sqrMagnitude > peakForce * peakForce) f = f.normalized * peakForce;
 
-                Vector3 forcePoint = hit.point + up * tyreForceLift;
+                Vector3 forcePoint = w.contact + up * tyreForceLift;
                 Body.AddForceAtPosition(wheelFwd * f.x + wheelRight * f.y, forcePoint);
 
                 w.spin += vLong / w.radius * Mathf.Rad2Deg * dt;
-                w.contact = hit.point;
-                bool spinning = w.driven && drivePerWheel > maxForce * 0.98f && Mathf.Abs(vLong) < 12f;
-                w.slip = Mathf.Abs(vLat) + (spinning ? 6f : 0f) + (braking > 0f && f.sqrMagnitude >= maxForce * maxForce * 0.95f ? Mathf.Abs(vLong) * 0.3f : 0f);
+                bool spinning = w.driven && drivePerWheel > peakForce * 0.98f && Mathf.Abs(vLong) < 12f;
+                w.slip = Mathf.Abs(vLat) + (spinning ? 6f : 0f) + (braking > 0f && f.sqrMagnitude >= peakForce * peakForce * 0.95f ? Mathf.Abs(vLong) * 0.3f : 0f);
             }
-            GroundedWheels = grounded;
 
             if (worstLanding > 3f) Impact?.Invoke(transform.position, worstLanding);
             // Hard landings crack the chassis. A landing lasts several physics steps, so only
@@ -295,6 +329,33 @@ namespace StuntCar
                 Vector3 axis = Vector3.Cross(up, Vector3.up);
                 Body.AddTorque(axis * 3f - Body.angularVelocity * 0.4f, ForceMode.Acceleration);
             }
+        }
+
+        // An axle's anti-roll bar: it pushes the more compressed side up and the other side down, in
+        // proportion to the difference, moving load across the axle. A wheel in the air counts as
+        // fully extended and takes no force (there's nothing for it to push against).
+        void AntiRollBar(bool front, float stiffness)
+        {
+            if (stiffness <= 0f) return;
+            Wheel left = null, right = null;
+            foreach (var w in wheels)
+                if (w.front == front) { if (w.mount.x < 0f) left = w; else right = w; }
+            if (left == null || right == null || (!left.grounded && !right.grounded)) return;
+            float cl = left.grounded ? 1f - left.springLength / restLength : 0f;
+            float cr = right.grounded ? 1f - right.springLength / restLength : 0f;
+            float force = (cl - cr) * restLength * stiffness;
+            if (left.grounded) left.load = Mathf.Max(0f, left.load + force);
+            if (right.grounded) right.load = Mathf.Max(0f, right.load - force);
+        }
+
+        // Sideways grip for a slip angle (radians), as a fraction of the tyre's peak: Pacejka's
+        // sin(C atan(B a)), with B set so the peak falls at peakSlipAngle. Rises almost straight at
+        // first, peaks, then eases down to sin(C pi/2) as the tyre slides.
+        float TyreCurve(float slipAngle)
+        {
+            float peak = Mathf.Max(0.5f, peakSlipAngle) * Mathf.Deg2Rad;
+            float b = Mathf.Tan(Mathf.PI / (2f * tyreShape)) / peak;
+            return Mathf.Sin(tyreShape * Mathf.Atan(b * slipAngle));
         }
 
         void Update()

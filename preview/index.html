@@ -409,7 +409,7 @@ class Track {
         hint.push(Math.min(p1.hint, p2.hint)); min.push(p1.min); gap.push(p1.gap);
       }
     }
-    const N = c.length; this.N = N; this.c = c; this.gap = gap; this.ai = hint; this.aiMin = min;
+    const N = c.length; this.N = N; this.c = c; this.gap = gap; this.ai = hint; this.aiMin = min; this.bank = bank;
     this.f = []; this.r = []; this.u = []; this.d = [0];
     for (let i = 0; i < N; i++) {
       const f = new V3().subVectors(c[(i + 1) % N], c[(i - 1 + N) % N]).normalize();
@@ -447,7 +447,10 @@ class Track {
       const ab = Math.hypot(a.x - b.x, a.z - b.z), bc = Math.hypot(b.x - c.x, b.z - c.z), ca = Math.hypot(c.x - a.x, c.z - a.z);
       const cr = Math.abs((b.x - a.x) * (c.z - a.z) - (b.z - a.z) * (c.x - a.x));
       const rad = cr < 1e-4 ? 1e4 : (ab * bc * ca) / (2 * cr);
-      this.ai[i] = Math.min(this.ai[i], Math.sqrt(1.15 * 9.81 * rad), 80);
+      // As Track.ComputeAiSpeeds: banking into the bend helps, off camber takes grip away.
+      const left = new V3().addVectors(a, c).sub(b).sub(b).dot(this.r[i]) < 0;
+      const grip = Math.max(0.6, AI_GRIP + Math.tan(this.bank[i] * (left ? 1 : -1) * Math.PI / 180));
+      this.ai[i] = Math.min(this.ai[i], Math.sqrt(grip * 9.81 * rad), 80);
     }
     for (let pass = 0; pass < 2; pass++)
       for (let i = N - 1; i >= 0; i--) {
@@ -681,10 +684,27 @@ function buildTrackMesh(tr) {
 const MOUNTS = [[1.0, 1.35], [-1.0, 1.35], [1.0, -1.35], [-1.0, -1.35]]; // x, z (body frame: +x left, +z forward)
 const CFG = {
   mass: 1100, rest: 0.45, radius: 0.36, spring: 36000, damper: 3200, bump: 140000,
-  grip: 1.45, latStiff: 9, rolling: 25, lift: 0.35, engine: 9000, top: 58, boostF: 6500, boostTop: 74,
+  grip: 1.45, peakSlip: 7, shape: 1.3, loadSens: 0.85, frontArb: 22000, rearArb: 11000, rolling: 25, lift: 0.1,
+  engine: 9000, top: 58, boostF: 6500, boostTop: 74,
   brake: 14000, reverse: 4000, drag: 0.42, downforce: 0.25, maxSteer: 32, hiSteer: 5, steerSpeed: 3.5,
   boostCap: 12, landThr: 5.5, landScale: 3.2, hitThr: 7, hitScale: 3.5,
 };
+let AI_GRIP = 1.0; // lateral g the AI plans corners with (Track.AiGrip)
+// An axle's anti-roll bar, as in CarController.AntiRollBar: moves load from the more compressed
+// side's partner to it, in proportion to the difference. A wheel in the air takes no force.
+function antiRoll(wheels, front, k) {
+  let l = null, r = null;
+  for (const w of wheels) if (w.front === front) { if (w.mount.x < 0) l = w; else r = w; }
+  if (!l || !r || k <= 0 || (!l.grounded && !r.grounded)) return;
+  const cl = l.grounded ? 1 - l.len / CFG.rest : 0, cr = r.grounded ? 1 - r.len / CFG.rest : 0, f = (cl - cr) * CFG.rest * k;
+  if (l.grounded) l.load = Math.max(0, l.load + f);
+  if (r.grounded) r.load = Math.max(0, r.load - f);
+}
+// Sideways grip for a slip angle (radians) as a fraction of peak, as in CarController.TyreCurve.
+function tyreCurve(alpha) {
+  const peak = CFG.peakSlip * Math.PI / 180, b = Math.tan(Math.PI / (2 * CFG.shape)) / peak;
+  return Math.sin(CFG.shape * Math.atan(b * alpha));
+}
 const MOUNT_Y = 0.38; // wheel mount height above the centre of mass
 // Contact points on the body (relative to centre of mass) used for crashes and scraping.
 const BODY_PTS = [];
@@ -811,24 +831,34 @@ class Car {
     const dpw = drivenG ? drive / drivenG : 0;
     let grounded = 0, worst = 0;
     const down = up.clone().negate();
+    // The suspension first: where each wheel meets the road and how hard its spring pushes.
     for (const w of this.wheels) {
-      const origin = this.world(w.mount), hit = this.ray(origin, down, CFG.rest + CFG.radius, track);
-      if (!hit) { w.grounded = false; w.kerb = false; w.len += clamp(CFG.rest - w.len, -dt * 2, dt * 2); w.slip = 0; continue; }
-      grounded++; w.grounded = true; w.kerb = !!hit.kerb;
-      w.len = Math.max(0, hit.t - CFG.radius);
-      const comp = 1 - w.len / CFG.rest, compSpeed = -this.pointVel(origin).dot(up);
+      w.origin = this.world(w.mount); w.hit = this.ray(w.origin, down, CFG.rest + CFG.radius, track);
+      if (!w.hit) { w.grounded = false; w.kerb = false; w.load = 0; w.len += clamp(CFG.rest - w.len, -dt * 2, dt * 2); w.slip = 0; continue; }
+      grounded++; w.grounded = true; w.kerb = !!w.hit.kerb;
+      w.len = Math.max(0, w.hit.t - CFG.radius);
+      const comp = 1 - w.len / CFG.rest, compSpeed = -this.pointVel(w.origin).dot(up);
       let load = comp * CFG.rest * CFG.spring + compSpeed * CFG.damper;
       if (comp > 0.85) { load += (comp - 0.85) * CFG.rest * CFG.bump; worst = Math.max(worst, compSpeed); }
-      load = Math.max(0, load);
-      this.force(up.clone().multiplyScalar(load), origin, dt);
+      w.load = Math.max(0, load);
+    }
+    antiRoll(this.wheels, true, CFG.frontArb); antiRoll(this.wheels, false, CFG.rearArb);
+    // Then the tyres, on the loads the springs and bars have settled.
+    const nominal = mpw * 9.81;
+    for (const w of this.wheels) {
+      if (!w.grounded) continue;
+      const hit = w.hit;
+      this.force(up.clone().multiplyScalar(w.load), w.origin, dt);
 
       let wf = w.front ? fwd.clone().applyAxisAngle(up, -this.steerAngle * Math.PI / 180) : fwd.clone();
       wf = wf.projectOnPlane(hit.normal).normalize();
       const wr = new V3().crossVectors(wf, hit.normal); // right-hand: forward x up = right
       const pv = this.pointVel(hit.point), vLong = pv.dot(wf), vLat = pv.dot(wr);
-      let lat = -vLat * CFG.latStiff * mpw, lon = (w.driven ? dpw : 0) - vLong * CFG.rolling;
+      // Grip grows less than in proportion to load; sideways force follows the slip angle.
+      const maxF = CFG.grip * nominal * Math.pow(Math.min(w.load, nominal * 3) / nominal, CFG.loadSens);
+      const alpha = Math.atan2(vLat, Math.max(Math.abs(vLong), 3)), stopSlide = Math.abs(vLat) * mpw / dt;
+      let lat = clamp(-maxF * tyreCurve(alpha), -stopSlide, stopSlide), lon = (w.driven ? dpw : 0) - vLong * CFG.rolling;
       if (braking > 0) lon -= Math.sign(vLong) * Math.min(braking / 4, Math.abs(vLong) * mpw / dt);
-      const maxF = CFG.grip * Math.min(load, mpw * 9.81 * 3);
       let mag = Math.hypot(lon, lat); if (mag > maxF) { lon *= maxF / mag; lat *= maxF / mag; }
       const fp = hit.point.clone().addScaledVector(up, CFG.lift);
       this.force(wf.clone().multiplyScalar(lon).addScaledVector(wr, lat), fp, dt);
@@ -1480,7 +1510,7 @@ function carVsCar(a, b) {
 }
 
 // Debug/test hook (used by automated checks; harmless otherwise).
-window.__scr = { game, TRACKS, startRace, showMenu, showLeague, setMode: (m) => { game.mode = m; }, keys, league: () => league, Track, Car, Racer, aiDrive, MAT, DT };
+window.__scr = { game, TRACKS, startRace, showMenu, showLeague, setMode: (m) => { game.mode = m; }, keys, league: () => league, Track, Car, Racer, aiDrive, MAT, DT, CFG, setAiGrip: (v) => { AI_GRIP = v; } };
 showMenu();
 requestAnimationFrame(frame);
 })();
