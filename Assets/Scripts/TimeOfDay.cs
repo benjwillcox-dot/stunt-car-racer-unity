@@ -12,6 +12,9 @@ namespace StuntCar
     {
         public static readonly Color AdvertGlowDay = new Color(0.03f, 0.03f, 0.03f);
         public static readonly Color AdvertGlowNight = new Color(0.6f, 0.6f, 0.6f);
+        // The grandstands' suite windows, press boxes, clock faces and lamps under the roofs.
+        public static readonly Color GrandstandGlowDay = new Color(0.06f, 0.06f, 0.06f);
+        public static readonly Color GrandstandGlowNight = new Color(1.6f, 1.6f, 1.6f);
         const float LampGlowNight = 3.5f;   // floodlight lamps' emission, times the day value
 
         public static bool Night { get; private set; }
@@ -42,6 +45,8 @@ namespace StuntCar
             {
                 a.FloodlightRuntime.SetColor("_EmissionColor", isNight ? lampDay * LampGlowNight : lampDay);
                 a.AdvertsRuntime.SetColor("_EmissionColor", isNight ? AdvertGlowNight : AdvertGlowDay);
+                if (a.GrandstandRuntime)
+                    a.GrandstandRuntime.SetColor("_EmissionColor", isNight ? GrandstandGlowNight : GrandstandGlowDay);
             }
             Changed?.Invoke(isNight);
         }

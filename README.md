@@ -25,8 +25,11 @@ a WebGL version with GitHub Actions ([GameCI](https://game.ci)) and publishes it
 - **Chassis damage** from hard landings and crashes; at 100% you're wrecked
 - **Crane recovery** when you fall off or end up on your roof: a lifting platform carries the car
   back to the road (the time it takes is the penalty)
-- A stadium built round each track: tall grandstands packed with fans close to the deck, with
-  roofs, sponsors' boards (all made-up brands), a start/finish gantry and floodlight masts
+- A stadium built round each track from **modelled grandstands** (Blender) packed with fans
+  close to the deck, in three styles inspired by real circuits: a modern main grandstand with
+  glazed suites under a fabric canopy on cantilevered trusses, temporary scaffold stands with tent
+  roofs, and a classic terrace on slim green columns with a clock tower. Plus sponsors' boards
+  (all made-up brands), a start/finish gantry and floodlight masts
 - An infield with the pit paddock (garages, transporters, tents), a fan zone with food stalls and
   a big screen showing a live TV feed of your car, tyre walls, hay bales under the jumps, marshal
   huts, mown stripes and the game's name painted on the grass
@@ -87,6 +90,17 @@ copy and repaint the three PNGs and add a material for them. If the model is mis
 the primitive stand-in. The Blender source and its build scripts are in `Art/StuntCar`;
 running its `rebuild_all.py` re-exports straight into `Assets/Models/StuntCar`.
 
+### The grandstands
+
+`Assets/Models/Grandstands/Grandstands.fbx` is a kit of three stand styles, each a 12 m bay
+plus an end piece, using the same palette workflow as the car. Their seat rows carry the
+game's crowd texture and their boards the adverts. `Grandstands.cs` lines each side of the
+stadium with them: it mirrors one end piece, stretches the bays slightly to fit, and merges a
+few modules at a time into one mesh. Each row of fans gets its own strip of the crowd texture
+and each board its own sponsor. `GrandstandImport` sets the import options. Without the model,
+the stadium falls back to stands built from boxes. The Blender source, build scripts and
+renders are in `Art/Grandstands` (see its README).
+
 ## One-off setup
 
 1. **Unity licence** (free Personal). You need a `.ulf` licence file once:
@@ -109,7 +123,7 @@ running its `rebuild_all.py` re-exports straight into `Assets/Models/StuntCar`.
 1. Tune the handling against the original's feel
 2. A moving drawbridge in the browser preview
 3. Steering-wheel pedal mapping and a controls screen
-4. Real scenery models, recorded sound effects (the car model is in)
+4. More scenery models and recorded sound effects (the car and grandstands are in)
 5. Two-player split screen
 
 *Stunt Car Racer* is © its respective rights holders. This is a non-commercial fan project.

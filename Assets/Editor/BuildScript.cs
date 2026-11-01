@@ -186,11 +186,15 @@ namespace StuntCar.EditorTools
             return m;
         }
 
-        // Livery for the Blender car: palette albedo, metallic (R) / smoothness (A) and emission maps.
-        static Material CarSkin(string name, string scheme)
+        // Livery for the Blender car.
+        static Material CarSkin(string name, string scheme) =>
+            PaletteSkin(name, CarModelImport.Folder + "Textures/StuntCar_" + scheme, new Color(2f, 2f, 2f));
+
+        // Material for a palette-textured Blender model: albedo, metallic (R) / smoothness (A) and
+        // emission maps, named <tex>_Albedo.png and so on.
+        static Material PaletteSkin(string name, string tex, Color emission)
         {
-            string tex = CarModelImport.Folder + "Textures/StuntCar_" + scheme;
-            var m = Lit(name, Color.white, 1f, 0f, new Color(2f, 2f, 2f));
+            var m = Lit(name, Color.white, 1f, 0f, emission);
             m.SetTexture("_BaseMap", AssetDatabase.LoadAssetAtPath<Texture2D>(tex + "_Albedo.png"));
             m.SetTexture("_MetallicGlossMap", AssetDatabase.LoadAssetAtPath<Texture2D>(tex + "_MetallicSmoothness.png"));
             m.EnableKeyword("_METALLICSPECGLOSSMAP");
@@ -360,6 +364,8 @@ namespace StuntCar.EditorTools
             boot.carModel = AssetDatabase.LoadAssetAtPath<GameObject>(CarModelImport.Folder + "StuntCar.fbx");
             boot.playerCarSkin = CarSkin("CarYellow", "Yellow");
             boot.opponentCarSkin = CarSkin("CarWhite", "White");
+            boot.grandstandModel = AssetDatabase.LoadAssetAtPath<GameObject>(GrandstandImport.Folder + "Grandstands.fbx");
+            boot.grandstandSkin = PaletteSkin("Grandstand", GrandstandImport.Folder + "Textures/Grandstand", TimeOfDay.GrandstandGlowDay);
 
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene, ScenePath);

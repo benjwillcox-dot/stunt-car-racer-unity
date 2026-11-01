@@ -15,23 +15,31 @@ namespace StuntCar.EditorTools
 
         void OnPreprocessTexture()
         {
-            if (!assetPath.StartsWith(Folder)) return;
-            var t = (TextureImporter)assetImporter;
+            if (assetPath.StartsWith(Folder)) PaletteTexture((TextureImporter)assetImporter, assetPath);
+        }
+
+        void OnPreprocessModel()
+        {
+            if (assetPath.StartsWith(Folder)) PaletteModel((ModelImporter)assetImporter, false);
+        }
+
+        /// <summary>Settings for a palette texture (a grid of flat-colour cells).</summary>
+        public static void PaletteTexture(TextureImporter t, string path)
+        {
             t.textureType = TextureImporterType.Default;
             t.filterMode = FilterMode.Point;
             t.wrapMode = TextureWrapMode.Clamp;
             t.mipmapEnabled = false;
             t.textureCompression = TextureImporterCompression.Uncompressed;
             // R = metallic, A = smoothness: data, not colour.
-            t.sRGBTexture = !assetPath.Contains("MetallicSmoothness");
+            t.sRGBTexture = !path.Contains("MetallicSmoothness");
             t.alphaSource = TextureImporterAlphaSource.FromInput;
             t.alphaIsTransparency = false;
         }
 
-        void OnPreprocessModel()
+        /// <summary>Settings for a model exported from Blender with palette UVs and no materials.</summary>
+        public static void PaletteModel(ModelImporter m, bool readable)
         {
-            if (!assetPath.StartsWith(Folder)) return;
-            var m = (ModelImporter)assetImporter;
             m.globalScale = 1f;
             m.useFileScale = true;
             m.bakeAxisConversion = false;
@@ -42,7 +50,7 @@ namespace StuntCar.EditorTools
             m.importLights = false;
             m.importBlendShapes = false;
             m.importNormals = ModelImporterNormals.Import;
-            m.isReadable = false;
+            m.isReadable = readable;
             m.addCollider = false;
         }
     }

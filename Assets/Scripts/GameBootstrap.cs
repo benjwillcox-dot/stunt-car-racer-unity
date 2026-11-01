@@ -32,6 +32,9 @@ namespace StuntCar
         public GameObject carModel;
         public Material playerCarSkin;
         public Material opponentCarSkin;
+        // The Blender grandstand kit and its palette material. Without them the stands are built from boxes.
+        public GameObject grandstandModel;
+        public Material grandstandSkin;
 
         public static GameBootstrap Instance { get; private set; }
         public Material AsphaltRuntime { get; private set; }
@@ -44,6 +47,8 @@ namespace StuntCar
         public Material AdvertsRuntime { get; private set; }
         public Material FloodlightRuntime { get; private set; }
         public Material HaloRuntime { get; private set; }
+        // The grandstands' palette; its windows, lamps and clocks glow at night (TimeOfDay).
+        public Material GrandstandRuntime { get; private set; }
         public PhysicsMaterial RoadPhysics { get; private set; }
         public PhysicsMaterial BodyPhysics { get; private set; }
 
@@ -72,6 +77,11 @@ namespace StuntCar
             FloodlightRuntime = new Material(floodlight) { name = "Floodlight (runtime)" };
             HaloRuntime = Textured(particleSpark, "Floodlight glow", ProceduralTextures.SoftDot(), 0f, false);
             HaloRuntime.SetColor("_BaseColor", new Color(1.3f, 1.25f, 1.1f, 1f));
+            if (grandstandSkin)
+            {
+                GrandstandRuntime = new Material(grandstandSkin) { name = "Grandstand (runtime)" };
+                GrandstandRuntime.SetColor("_EmissionColor", TimeOfDay.GrandstandGlowDay);
+            }
 
             var grassTex = ProceduralTextures.Grass();
             grass.SetTexture("_BaseMap", grassTex);

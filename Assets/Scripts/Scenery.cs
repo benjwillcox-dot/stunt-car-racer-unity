@@ -47,7 +47,9 @@ namespace StuntCar
         /// <summary>
         /// Grandstands close in round the track, tall enough that the crowd looks down on the deck:
         /// the main stand along the start straight, smaller ones on the other three sides, and a
-        /// floodlight mast at each corner. Built as a child of the track, so it goes with it.
+        /// floodlight mast at each corner. The stands come from the Blender kit (see
+        /// <see cref="Grandstands"/>), or are built from boxes without it. Built as a child of the
+        /// track, so it goes with it.
         /// </summary>
         public static void BuildStadium(Track track, GameBootstrap a)
         {
@@ -71,19 +73,39 @@ namespace StuntCar
             var materials = new[] { a.concrete, a.CrowdRuntime, a.scaffold, a.FloodlightRuntime, a.standSeats, a.AdvertsRuntime };
 
             // The start line is on the low-z side of every track, so the main stand goes there.
-            // Each side is its own mesh, so each is lit by the floodlights nearest it.
-            var side = new MeshBuilder(6);
-            AddStands(side, new Vector3(minX, 0, minZ - mainGap), new Vector3(maxX, 0, minZ - mainGap), Vector3.back, mainTiers, rng);
-            AddPart(go.transform, "Main stand", side, materials);
-            side = new MeshBuilder(6);
-            AddStands(side, new Vector3(minX, 0, maxZ + sideGap), new Vector3(maxX, 0, maxZ + sideGap), Vector3.forward, sideTiers, rng);
-            AddPart(go.transform, "Far stand", side, materials);
-            side = new MeshBuilder(6);
-            AddStands(side, new Vector3(minX - sideGap, 0, minZ + 6f), new Vector3(minX - sideGap, 0, maxZ - 6f), Vector3.left, sideTiers, rng);
-            AddPart(go.transform, "Left stand", side, materials);
-            side = new MeshBuilder(6);
-            AddStands(side, new Vector3(maxX + sideGap, 0, minZ + 6f), new Vector3(maxX + sideGap, 0, maxZ - 6f), Vector3.right, sideTiers, rng);
-            AddPart(go.transform, "Right stand", side, materials);
+            // Each side is drawn in pieces, so each is lit by the floodlights nearest it.
+            Vector3 mainFrom = new Vector3(minX, 0, minZ - mainGap), mainTo = new Vector3(maxX, 0, minZ - mainGap);
+            Vector3 farFrom = new Vector3(minX, 0, maxZ + sideGap), farTo = new Vector3(maxX, 0, maxZ + sideGap);
+            Vector3 leftFrom = new Vector3(minX - sideGap, 0, minZ + 6f), leftTo = new Vector3(minX - sideGap, 0, maxZ - 6f);
+            Vector3 rightFrom = new Vector3(maxX + sideGap, 0, minZ + 6f), rightTo = new Vector3(maxX + sideGap, 0, maxZ - 6f);
+            float mainDepth, farDepth;
+            if (Grandstands.Available(a))
+            {
+                var (far, ends) = StandStyles(track.Definition != null ? track.Definition.Name : track.name);
+                Grandstands.BuildSide(go.transform, "Main stand", a, Grandstands.Style.Main, mainFrom, mainTo, Vector3.back, rng);
+                Grandstands.BuildSide(go.transform, "Far stand", a, far, farFrom, farTo, Vector3.forward, rng);
+                Grandstands.BuildSide(go.transform, "Left stand", a, ends, leftFrom, leftTo, Vector3.left, rng);
+                Grandstands.BuildSide(go.transform, "Right stand", a, ends, rightFrom, rightTo, Vector3.right, rng);
+                mainDepth = Grandstands.Depth(a, Grandstands.Style.Main);
+                farDepth = Grandstands.Depth(a, far);
+            }
+            else
+            {
+                var side = new MeshBuilder(6);
+                AddStands(side, mainFrom, mainTo, Vector3.back, mainTiers, rng);
+                AddPart(go.transform, "Main stand", side, materials);
+                side = new MeshBuilder(6);
+                AddStands(side, farFrom, farTo, Vector3.forward, sideTiers, rng);
+                AddPart(go.transform, "Far stand", side, materials);
+                side = new MeshBuilder(6);
+                AddStands(side, leftFrom, leftTo, Vector3.left, sideTiers, rng);
+                AddPart(go.transform, "Left stand", side, materials);
+                side = new MeshBuilder(6);
+                AddStands(side, rightFrom, rightTo, Vector3.right, sideTiers, rng);
+                AddPart(go.transform, "Right stand", side, materials);
+                mainDepth = mainTiers * Tread;
+                farDepth = sideTiers * Tread;
+            }
 
             // Floodlight masts in the corners between the stands, lamps aimed at the middle, and
             // more behind the long stands on the bigger arenas, aimed straight across.
@@ -98,7 +120,7 @@ namespace StuntCar
             for (int k = 1; k <= between; k++)
             {
                 float x = Mathf.Lerp(minX, maxX, k / (float)(between + 1));
-                float behindMain = minZ - mainGap - mainTiers * Tread - 8f, behindFar = maxZ + sideGap + sideTiers * Tread + 8f;
+                float behindMain = minZ - mainGap - mainDepth - 8f, behindFar = maxZ + sideGap + farDepth + 8f;
                 AddFloodlight(mb, lights, new Vector3(x, 0f, behindMain), new Vector3(x, 0f, Mathf.Lerp(minZ, maxZ, 0.4f)), false);
                 AddFloodlight(mb, lights, new Vector3(x, 0f, behindFar), new Vector3(x, 0f, Mathf.Lerp(minZ, maxZ, 0.6f)), false);
             }
@@ -107,6 +129,20 @@ namespace StuntCar
             AddPart(go.transform, "Floodlights and gantry", mb, materials);
 
             Infield.Build(track, a, go.transform, minX, maxX, minZ, maxZ);
+        }
+
+        // The main grandstand always lines the start straight; the other sides get one of three
+        // mixes, picked by the track's name so each arena keeps its own look.
+        static (Grandstands.Style far, Grandstands.Style ends) StandStyles(string trackName)
+        {
+            int h = 0;
+            foreach (char ch in trackName ?? "") h = h * 31 + ch;
+            switch ((h % 3 + 3) % 3)
+            {
+                case 0: return (Grandstands.Style.Terrace, Grandstands.Style.Scaffold);
+                case 1: return (Grandstands.Style.Main, Grandstands.Style.Scaffold);
+                default: return (Grandstands.Style.Scaffold, Grandstands.Style.Terrace);
+            }
         }
 
         // A stadium mesh with its renderer and collider: solid, so a car that flies off into the
